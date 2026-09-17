@@ -87,6 +87,7 @@ code{font-family:var(--f-mono);font-size:.9em;background:var(--sunken);padding:1
 .btn.sm{min-height:40px;padding:0 14px;font-size:15px}
 .btn.block{width:100%}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.done{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .btnrow{display:flex;flex-wrap:wrap;gap:10px}
 .linkbtn{background:none;border:0;padding:6px 0;font:600 15px var(--f-body);color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .linkbtn.danger{color:var(--no)}
@@ -421,7 +422,7 @@ function buildLabels(people){
 // Se siguen aceptando las listas sin clave de antes: «PL1.» (solo paraescolares) y «PL2.» (el mismo JSON en base64url).
 function listPayload(g){
   const dest = secFor(g.s);
-  return { v: 3, i: g.id, s: g.s || '', a: g.a, g: g.g, m: g.m, o: cfg.org || '', w: dest.w, t: dest.w ? '' : dest.t, n: g.n };
+  return { v: 3, i: g.id, s: g.s || '', a: g.a, g: g.g, m: g.m, o: cfg.org || '', w: dest.w, t: dest.t, n: g.n };
 }
 // Cifrar tarda medio segundo y sale distinto cada vez: el resultado se guarda mientras la lista no cambie.
 const sealedCache = {};
@@ -644,7 +645,12 @@ function purgeOld(){
 const getList = id => lists.find(l => l.id === id);
 function sess(id, d){
   const s = sessions[id] && sessions[id][d];
-  return s && s.marks ? s : { marks: {}, sent: null };
+  if (s && s.marks) {
+    // Antes solo había un destino: lo enviado se guardaba en «sent».
+    if (!s.sentAt) s.sentAt = s.sent ? { g: s.sent } : {};
+    return s;
+  }
+  return { marks: {}, sent: null, sentAt: {} };
 }
 function saveSess(id, d, s){ sessions[id] = sessions[id] || {}; sessions[id][d] = s; store.set('pl.sessions', sessions); }
 function counts(l, s){
@@ -668,11 +674,25 @@ function summary(l, d, s){
   const foot = '#PL2 ' + d + ' ' + l.id;
   return { text: lines.join('\n') + '\n' + foot, lines, foot, U };
 }
-// Adónde manda el entrenador el resumen: al grupo de su sección (lo elige en WhatsApp) o a un número.
-function destOf(l){
-  if (l.w) return { html: 'Envíalo al grupo <b>«' + esc(l.w) + '»</b>. Solo a ese grupo: nunca al de las familias.', num: '' };
-  if (l.t) return { html: 'WhatsApp se abrirá en el chat de coordinación con el mensaje ya escrito: solo falta darle a enviar.', num: l.t };
-  return { html: 'Envíalo al chat que te haya dicho coordinación. Nunca al grupo de las familias.', num: '' };
+// Adónde manda el entrenador el resumen. Puede haber dos destinos: el grupo de su sección
+// (lo elige él en WhatsApp) y el chat de coordinación (se abre directo con el número).
+function destsOf(l){
+  const out = [];
+  if (l.w) out.push({ k: 'g', num: '', to: 'al grupo «' + l.w + '»', short: 'al grupo' });
+  if (l.t) out.push({ k: 't', num: l.t, to: 'a coordinación', short: 'a coordinación' });
+  if (!out.length) out.push({ k: 'g', num: '', to: 'al chat que te haya dicho coordinación', short: 'el resumen' });
+  return out;
+}
+function sendState(l, s){
+  const ds = destsOf(l), pend = ds.filter(d => !s.sentAt[d.k]);
+  return { ds, pend, done: ds.length - pend.length, all: !pend.length };
+}
+function destNote(l){
+  const ds = destsOf(l);
+  if (ds.length > 1) return 'Envíalo a los dos sitios: <b>' + esc(ds[0].to) + '</b> y <b>' + esc(ds[1].to) + '</b>. Nunca al grupo de las familias.';
+  if (l.w) return 'Envíalo <b>' + esc(ds[0].to) + '</b>. Solo ahí: nunca al grupo de las familias.';
+  if (l.t) return 'WhatsApp se abrirá en el chat de coordinación con el mensaje ya escrito: solo falta darle a enviar.';
+  return 'Envíalo al chat que te haya dicho coordinación. Nunca al grupo de las familias.';
 }
 
 /* ---------- Pantallas del monitor ---------- */
@@ -696,8 +716,9 @@ function render(){
 }
 
 function statusChip(l){
-  const s = sess(l.id, today()), c = counts(l, s), marked = l.n.length - c.U;
-  if (s.sent) return '<span class="chip ok">Hoy: enviada a las ' + esc(fTime.format(new Date(s.sent))) + '</span>';
+  const s = sess(l.id, today()), c = counts(l, s), marked = l.n.length - c.U, st = sendState(l, s);
+  if (st.all && s.sent) return '<span class="chip ok">Hoy: enviada a las ' + esc(fTime.format(new Date(s.sent))) + '</span>';
+  if (st.done) return '<span class="chip late">Hoy: falta enviarla ' + esc(st.pend[0].short) + '</span>';
   if (marked) return '<span class="chip late">Hoy: ' + marked + ' de ' + l.n.length + ' marcados, sin enviar</span>';
   return '<span class="chip">Hoy: sin pasar</span>';
 }
@@ -799,22 +820,31 @@ function tallyHTML(c){
     <div><b>${c.U}</b><span>Sin marcar</span></div>`;
 }
 function sendLabel(l, s){
-  const to = l.w ? 'Enviar al grupo de ' + (l.s || 'asistencia') : 'Enviar a coordinación';
-  return s.sent ? 'Enviada a las ' + fTime.format(new Date(s.sent)) + ' · Enviar de nuevo' : to;
+  const st = sendState(l, s);
+  if (st.all && s.sent) return 'Enviada a las ' + fTime.format(new Date(s.sent)) + ' · Abrir para enviar otra vez';
+  if (st.done) return 'Falta enviarla ' + st.pend[0].short;
+  return st.ds.length > 1 ? 'Enviar el resumen (a ' + st.ds.length + ' sitios)' : 'Enviar ' + st.ds[0].to;
 }
 function sendPanel(l, s){
-  const sm = summary(l, S.date, s), dest = destOf(l);
+  const sm = summary(l, S.date, s), st = sendState(l, s);
+  const btn = (d, i) => {
+    const when = s.sentAt[d.k];
+    const label = when ? 'Enviada a las ' + fTime.format(new Date(when)) + ' · Enviar otra vez'
+      : (st.ds.length > 1 ? (i + 1) + ' · ' : '') + 'Enviar ' + d.to;
+    return `<a class="btn ${when ? 'done' : 'primary'} block" href="${esc(waLink(d.num, sm.text))}" target="_blank" rel="noopener" data-act="sent" data-k="${d.k}">${when ? '✓ ' : ''}${esc(label)}</a>`;
+  };
   return `<div class="sendpanel" id="sendpanel">
     <h3>Enviar el resumen</h3>
-    <p class="dest">${dest.html}</p>
+    <p class="dest">${destNote(l)}</p>
     ${sm.U.length ? `<p class="warn">Quedan ${sm.U.length} sin marcar. Puedes enviarlo igual: saldrán como «sin marcar».</p>` : ''}
     <pre class="preview">${esc(sm.lines.join('\n'))}
 <span class="code">${esc(sm.foot)}</span></pre>
+    ${st.ds.map(btn).join('')}
+    ${st.done && !st.all ? `<p class="warn">Te falta enviarlo ${esc(st.pend[0].short)}.</p>` : ''}
     <div class="btnrow">
-      <a class="btn primary" href="${esc(waLink(dest.num, sm.text))}" target="_blank" rel="noopener" data-act="sent">Abrir WhatsApp</a>
-      ${canShare ? '<button type="button" class="btn" data-act="share-sum">Compartir…</button>' : ''}
-      <button type="button" class="btn" data-act="copy-sum">Copiar</button>
-      <button type="button" class="btn ghost" data-act="cancel-send">Volver</button>
+      ${canShare ? '<button type="button" class="btn sm" data-act="share-sum">Compartir…</button>' : ''}
+      <button type="button" class="btn sm" data-act="copy-sum">Copiar</button>
+      <button type="button" class="btn sm ghost" data-act="cancel-send">Volver</button>
     </div>
     <p class="note small">No borres la última línea (la que empieza por <code>#PL2</code>): con ella coordinación pasa el resumen al registro.</p>
   </div>`;
@@ -872,10 +902,17 @@ function markRow(i, k){
   const t = $('#tally'); if (t) t.innerHTML = tallyHTML(counts(l, s));
   if (S.sending) { const d = app.querySelector('.dock .wrap'); if (d) d.innerHTML = sendPanel(l, s); }
 }
-function markSent(close){
+function markSent(k){
   const l = getList(S.listId); if (!l) return;
-  const s = sess(l.id, S.date); s.sent = Date.now(); saveSess(l.id, S.date, s);
-  if (close) setTimeout(() => { S.sending = false; render(); toast('Sesión marcada como enviada'); }, 400);
+  const s = sess(l.id, S.date);
+  s.sentAt[k] = s.sent = Date.now();
+  saveSess(l.id, S.date, s);
+  const st = sendState(l, s);
+  // Con dos destinos, el panel se queda abierto hasta que se han enviado los dos.
+  setTimeout(() => {
+    if (st.all) { S.sending = false; render(); toast('Resumen enviado'); }
+    else { render(); toast('Ahora envíalo ' + st.pend[0].short); }
+  }, 400);
 }
 
 function renderNormas(){
@@ -885,7 +922,7 @@ function renderNormas(){
     <p class="prose">Esta app sirve para una sola cosa: pasar lista en tu equipo o actividad y avisar a coordinación de quién ha venido. Trabajas con datos de menores, así que te pedimos esto:</p>
     <ol class="rules">
       <li><b>Úsala solo para pasar lista de tu grupo.</b> Nada de otros usos.</li>
-      <li><b>Envía el resumen solo al grupo de asistencia de tu sección.</b> En ese grupo solo están sus entrenadores y su coordinación. Si coordinación te indica otro chat, usa ese. Nunca lo mandes al grupo de las familias ni a otras personas.</li>
+      <li><b>Envía el resumen solo adonde te diga la app.</b> Normalmente, al grupo de asistencia de tu sección y al chat de coordinación: la app tiene un botón para cada uno y avisa si te dejas alguno. Nunca lo mandes al grupo de las familias ni a otras personas.</li>
       <li><b>No reenvíes tu lista ni su clave, y no hagas capturas.</b> Si otra persona la necesita, que se la pida a coordinación.</li>
       <li><b>No escribas por WhatsApp datos de salud, fotos ni comentarios sobre los niños.</b> Una alergia, una lesión o un incidente se comunican por el canal oficial.</li>
       <li><b>Guarda secreto sobre lo que sepas de los niños.</b> También cuando dejes de entrenar aquí (artículo 5 de la Ley Orgánica 3/2018).</li>
@@ -1007,7 +1044,9 @@ function monitorMessage(g){
     lines.push('Abre la app Pasa lista, toca «Añadir una lista» y pega este mensaje entero.', '', code);
   }
   lines.push('', 'La primera vez te pedirá una clave, que te doy aparte.');
-  if (dest.w) lines.push('', 'Cuando pases lista, envía el resumen al grupo «' + dest.w + '». Solo a ese grupo.');
+  if (dest.w && dest.t) lines.push('', 'Cuando pases lista, la app te pedirá enviar el resumen a dos sitios: al grupo «' + dest.w + '» y a coordinación. Hay un botón para cada uno.');
+  else if (dest.w) lines.push('', 'Cuando pases lista, envía el resumen al grupo «' + dest.w + '». Solo a ese grupo.');
+  else if (dest.t) lines.push('', 'Cuando pases lista, envía el resumen a coordinación desde la app.');
   lines.push('', 'Solo lleva nombres e iniciales. Por favor, no reenvíes este mensaje ni la clave, y no hagas capturas.');
   return lines.join('\n');
 }
@@ -1324,12 +1363,12 @@ function coordSettings(){
     <div class="field"><label for="s-url">Enlace de la app</label><input id="s-url" inputmode="url" maxlength="300" value="${esc(cfg.url)}" placeholder="https://…"><span class="hint">La dirección de esta página. Con ella, cada mensaje lleva un enlace que abre la lista con un toque.</span></div>
     <section class="panel" aria-labelledby="secs-h">
       <h3 id="secs-h">Secciones: adónde va la asistencia</h3>
-      <p class="note">Crea en WhatsApp un grupo de asistencia por sección, solo con su coordinador, sus entrenadores y tú, y escribe aquí su nombre. Así cada coordinador recibe solo lo de su sección. Si una sección prefiere un chat privado, deja el grupo vacío y pon el número.</p>
+      <p class="note">Escribe el nombre del grupo de WhatsApp de cada sección, tal cual: ahí mandan los entrenadores sus resúmenes, y así cada coordinador recibe solo lo de su sección. Si además pones un número, el entrenador enviará el resumen <b>a los dos sitios</b>, con un botón para cada uno: sirve para que la coordinación general lo reciba sin estar en los grupos.</p>
       <div class="secs">${S.secDraft.map((x, i) => `
         <div class="secrow">
           <div class="field"><label for="sec-n-${i}">Sección</label><input id="sec-n-${i}" data-sec="${i}" data-f="n" maxlength="30" value="${esc(x.n)}"></div>
           <div class="field"><label for="sec-w-${i}">Grupo de WhatsApp</label><input id="sec-w-${i}" data-sec="${i}" data-f="w" maxlength="60" value="${esc(x.w)}" placeholder="${esc('Asistencia ' + (x.n || ''))}"></div>
-          <div class="field"><label for="sec-t-${i}">O número</label><input id="sec-t-${i}" data-sec="${i}" data-f="t" inputmode="tel" maxlength="20" value="${esc(x.t)}" placeholder="600 000 000"></div>
+          <div class="field"><label for="sec-t-${i}">Y/o número</label><input id="sec-t-${i}" data-sec="${i}" data-f="t" inputmode="tel" maxlength="20" value="${esc(x.t)}" placeholder="600 000 000"></div>
           <button type="button" class="btn sm ghost danger" data-act="sec-del" data-i="${i}">Quitar</button>
         </div>`).join('')}
       </div>
@@ -1463,10 +1502,13 @@ document.addEventListener('click', e => {
       { const p = $('#sendpanel'); if (p) p.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
       break;
     case 'cancel-send': S.sending = false; render(); break;
-    case 'sent': markSent(true); break;
-    case 'share-sum': if (l) shareText(summary(l, S.date, sess(l.id, S.date)).text).then(ok => { if (ok) markSent(true); }); break;
+    case 'sent': markSent(b.dataset.k); break;
+    case 'share-sum': if (l) shareText(summary(l, S.date, sess(l.id, S.date)).text); break;
     case 'copy-sum':
-      if (l) { copyWithToast(summary(l, S.date, sess(l.id, S.date)).text, 'Resumen copiado: pégalo en ' + (l.w ? 'el grupo «' + l.w + '»' : 'el chat de coordinación')); markSent(false); }
+      if (l) {
+        const ds = destsOf(l);
+        copyWithToast(summary(l, S.date, sess(l.id, S.date)).text, 'Resumen copiado: pégalo ' + ds.map(d => d.to).join(' y '));
+      }
       break;
     case 'unlock-cancel': Object.assign(S, { lock: null, keyError: '', keyText: '' }); clearHash(); render(); break;
     default: coordClick(act, b);
