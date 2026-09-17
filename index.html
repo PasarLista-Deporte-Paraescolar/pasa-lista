@@ -7,7 +7,7 @@
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>Pasa Lista Paraescolares</title>
+<title>Pasa lista</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@500;600;700&display=swap">
@@ -110,6 +110,8 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent);outline:none;
 .chip.no{background:var(--no-soft);color:var(--no)}
 .chip.late{background:var(--late-soft);color:var(--late)}
 .chip.demo{background:var(--late-soft);color:var(--late);text-transform:uppercase;letter-spacing:.06em}
+.chip.sec{background:var(--accent-soft);color:var(--accent)}
+.board .chip.sec{background:var(--board-2);color:var(--board-ink)}
 
 /* Tarjetas de lista (móvil) */
 .cards{display:flex;flex-direction:column;gap:10px}
@@ -155,6 +157,12 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent);outline:none;
 .mk.F[aria-pressed="true"]{background:var(--no);border-color:var(--no);color:var(--on-no)}
 .mk.T[aria-pressed="true"]{background:var(--late);border-color:var(--late);color:var(--on-late)}
 .below{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding-block:14px 8px}
+@media (max-width: 360px){
+  .roll{padding:0 8px}
+  .marks{gap:4px}
+  .mk{width:40px;height:40px}
+  .who .nm{font-size:16.5px;overflow-wrap:break-word}
+}
 
 /* Barra inferior y envío */
 .dock{position:sticky;bottom:0;z-index:5;padding-top:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--ground) 72%,transparent)}
@@ -182,6 +190,22 @@ tr:last-child td{border-bottom:0}
 .bars li{display:grid;grid-template-columns:minmax(0,9em) 1fr 2.2em;align-items:center;gap:10px;font-size:14px}
 .bars .bar{height:10px;border-radius:5px;background:var(--no);min-width:4px}
 .bars .n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.bars.pct .bar{background:var(--ok)}
+.bars.pct .bar.low{background:var(--no)}
+.bars.pct li{grid-template-columns:minmax(0,9em) 1fr 3.2em}
+.dest{background:var(--ok-soft);color:var(--ink);border-radius:10px;padding:10px 12px;font-size:15px}
+.dest b{color:var(--ok)}
+.secs{display:flex;flex-direction:column;gap:10px}
+.secrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:end;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.secrow .field label{font-size:13px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+td.low{color:var(--no);font-weight:700}
+.keypanel{border:2px solid var(--accent)}
+.keyform{display:flex;flex-direction:column;gap:12px}
+.keyin{font:700 24px/1.2 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;max-width:11em}
+.keybox{margin:0;font:700 34px/1.1 var(--f-mono);letter-spacing:.14em}
 
 /* Normas */
 .rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:10px}
@@ -198,10 +222,10 @@ tr:last-child td{border-bottom:0}
   <div class="wrap topin">
     <div class="brand">
       <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M8.5 12.5l2.2 2.2 4.8-4.8"/></svg></span>
-      <div style="min-width:0"><div class="name">Pasa lista</div><div class="org" id="org-line">Paraescolares</div></div>
+      <div style="min-width:0"><div class="name">Pasa lista</div><div class="org" id="org-line">Deporte y paraescolares</div></div>
     </div>
-    <nav class="modes" aria-label="Secciones">
-      <button type="button" data-act="mode" data-m="monitor" id="m-monitor">Monitor</button>
+    <nav class="modes" aria-label="Apartados">
+      <button type="button" data-act="mode" data-m="monitor" id="m-monitor">Pasar lista</button>
       <button type="button" data-act="mode" data-m="coord" id="m-coord">Coordinación</button>
       <button type="button" data-act="mode" data-m="normas" id="m-normas">Normas</button>
     </nav>
@@ -234,19 +258,49 @@ const store = {
 function clean(s, max){
   return String(s == null ? '' : s).replace(/[\x00-\x1f\x7f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
+// En el resumen, los nombres van separados por comas y la sección por «·»: no pueden llevarlos dentro.
+const cleanLabel = s => clean(String(s == null ? '' : s).replace(/[,;]/g, ' '), LIM.label);
+const cleanSec = s => clean(String(s == null ? '' : s).replace(/[·#]/g, ' '), 30);
+const cleanTeam = s => clean(String(s == null ? '' : s).replace(/#/g, ' '), LIM.text);
 function rid(){ return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
 function countBy(arr){ const c = {}; arr.forEach(x => { c[x] = (c[x] || 0) + 1; }); return c; }
 
-function b64e(obj){
-  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+function b64bytes(bytes){
   let bin = ''; bytes.forEach(b => { bin += String.fromCharCode(b); });
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-function b64d(str){
+function unb64bytes(str){
   let s = str.replace(/-/g, '+').replace(/_/g, '/');
   while (s.length % 4) s += '=';
-  const bin = atob(s);
-  return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+  return Uint8Array.from(atob(s), c => c.charCodeAt(0));
+}
+const b64e = obj => b64bytes(new TextEncoder().encode(JSON.stringify(obj)));
+const b64d = str => JSON.parse(new TextDecoder().decode(unb64bytes(str)));
+
+/* ---------- Clave de las listas ---------- */
+// La lista viaja cifrada (AES-GCM con una clave derivada por PBKDF2). Sin la clave, un enlace reenviado no abre nada.
+const KEY_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const KEY_LEN = 6, KDF_ROUNDS = 250000;
+const normKey = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, '');
+const showKey = k => k.slice(0, 3) + '-' + k.slice(3);
+const canSeal = () => !!(window.crypto && crypto.subtle);
+function newKey(){ return Array.from(crypto.getRandomValues(new Uint8Array(KEY_LEN)), b => KEY_CHARS[b % KEY_CHARS.length]).join(''); }
+async function deriveKey(pin, salt){
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(normKey(pin)), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: KDF_ROUNDS, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function seal(obj, pin){
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await deriveKey(pin, salt), data));
+  const all = new Uint8Array(28 + ct.length);
+  all.set(salt); all.set(iv, 16); all.set(ct, 28);
+  return b64bytes(all);
+}
+async function unseal(str, pin){
+  const all = unb64bytes(str);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.slice(16, 28) }, await deriveKey(pin, all.slice(0, 16)), all.slice(28));
+  return JSON.parse(new TextDecoder().decode(pt));
 }
 
 function phone(p){
@@ -346,7 +400,7 @@ function parsePerson(line, fmt){
 function mainWord(g){ return (g.find(w => !isParticle(w)) || g[g.length - 1] || '').replace(/[^\p{L}-]/gu, ''); }
 function labelFor(p, k){
   const ini = p.groups.map(g => { const w = mainWord(g); return w ? capFirst(w.slice(0, k).toLocaleLowerCase('es')) + '.' : ''; }).filter(Boolean);
-  return clean([p.name].concat(ini).join(' '), LIM.label);
+  return cleanLabel([p.name].concat(ini).join(' '));
 }
 function buildLabels(people){
   let labels = people.map(p => labelFor(p, 1));
@@ -362,36 +416,116 @@ function buildLabels(people){
 }
 
 /* ---------- Códigos que viajan por WhatsApp ---------- */
-function listCode(g, cfg){
-  return 'PL1.' + b64e({ v: 1, i: g.id, a: g.a, g: g.g, m: g.m, o: cfg.org || '', t: cfg.phone || '', n: g.n });
+// Lista (coordinación → entrenador o monitor): «PL3.<id>.<datos cifrados>». Dentro va
+// {v:3, i:id, s:sección, a:equipo, g:horario, m:entrenador, o:club, w:grupo de WhatsApp, t:teléfono, n:[etiquetas]}.
+// Se siguen aceptando las listas sin clave de antes: «PL1.» (solo paraescolares) y «PL2.» (el mismo JSON en base64url).
+function listPayload(g){
+  const dest = secFor(g.s);
+  return { v: 3, i: g.id, s: g.s || '', a: g.a, g: g.g, m: g.m, o: cfg.org || '', w: dest.w, t: dest.w ? '' : dest.t, n: g.n };
 }
-function parseListCode(text){
-  const m = String(text || '').match(/PL1\.([A-Za-z0-9_-]{8,})/);
-  if (!m) return { error: 'No encuentro ningún código de lista. Copia el mensaje entero que te envió coordinación (lleva un código que empieza por PL1.) y vuelve a pegarlo.' };
-  let o;
-  try { o = b64d(m[1]); } catch (e) { return { error: 'El código está cortado o dañado. Pide a coordinación que te lo reenvíe.' }; }
-  if (!o || o.v !== 1 || !Array.isArray(o.n)) return { error: 'Ese código no es de una lista de Pasa lista. Pide a coordinación que te lo reenvíe.' };
-  const names = Array.from(new Set(o.n.map(x => clean(x, LIM.label)).filter(Boolean))).slice(0, LIM.names);
+// Cifrar tarda medio segundo y sale distinto cada vez: el resultado se guarda mientras la lista no cambie.
+const sealedCache = {};
+function listCode(g){
+  const p = listPayload(g), sig = JSON.stringify(p) + '|' + g.key;
+  const c = sealedCache[g.id];
+  if (c && c.sig === sig) return c.code;
+  sealedCache[g.id] = { sig, code: null };
+  seal(p, g.key).then(s => {
+    const now = sealedCache[g.id];
+    if (!now || now.sig !== sig) return;
+    now.code = 'PL3.' + g.id + '.' + s;
+    if (S.mode === 'coord' && S.tab === 'crear' && S.msg === g.id) render();
+  }).catch(() => toast('Este navegador no puede cifrar la lista. Abre la app desde su enlace https.'));
+  return null;
+}
+function listFromObj(o){
+  if (!o || ![1, 2, 3].includes(o.v) || !Array.isArray(o.n)) return { error: 'Ese código no es de una lista de Pasa lista. Pide a coordinación que te lo reenvíe.' };
+  const names = Array.from(new Set(o.n.map(x => cleanLabel(x)).filter(Boolean))).slice(0, LIM.names);
   if (!names.length) return { error: 'La lista llegó sin nombres. Pide a coordinación que la revise.' };
   return { list: {
     id: String(o.i || '').replace(/[^a-z0-9]/gi, '').slice(0, 16) || rid(),
-    a: clean(o.a, LIM.text) || 'Actividad', g: clean(o.g, LIM.text), m: clean(o.m, 40),
-    o: clean(o.o, LIM.text), t: phone(o.t), n: names, added: Date.now()
+    s: cleanSec(o.s) || (o.v === 1 ? 'Paraescolares' : ''),
+    a: cleanTeam(o.a) || 'Actividad', g: clean(o.g, LIM.text), m: clean(o.m, 40),
+    o: clean(o.o, LIM.text), w: clean(o.w, LIM.text), t: phone(o.t), n: names, added: Date.now()
   } };
 }
-function parseReports(text){
-  const out = [], re = /PLR1\.([A-Za-z0-9_-]{8,})/g;
-  const arr = v => (Array.isArray(v) ? v : []).map(x => clean(x, LIM.label)).filter(Boolean).slice(0, LIM.names);
-  let m;
-  while ((m = re.exec(String(text || '')))) {
-    try {
-      const o = b64d(m[1]);
-      if (!o || o.v !== 1 || !/^\d{4}-\d{2}-\d{2}$/.test(o.d)) continue;
-      out.push({ i: String(o.i || '').replace(/[^a-z0-9]/gi, '').slice(0, 16), a: clean(o.a, LIM.text), g: clean(o.g, LIM.text),
-        m: clean(o.m, 40), d: o.d, n: Math.max(0, Math.min(999, parseInt(o.n, 10) || 0)), f: arr(o.f), t: arr(o.t), s: arr(o.s) });
-    } catch (e) {}
+const NO_CODE = 'No encuentro ningún código de lista. Copia el mensaje entero que te envió coordinación y vuelve a pegarlo.';
+// Devuelve {list}, {error} o {needKey}: una lista con clave que todavía no se ha podido abrir.
+async function importList(text, pin){
+  const s = String(text || '');
+  const m = s.match(/PL3\.([A-Za-z0-9]{4,16})\.([A-Za-z0-9_-]{40,})/);
+  if (!m) {
+    const old = s.match(/PL([12])\.([A-Za-z0-9_-]{8,})/);
+    if (!old) return { error: NO_CODE };
+    try { return listFromObj(b64d(old[2])); } catch (e) { return { error: 'El código está cortado o dañado. Pide a coordinación que te lo reenvíe.' }; }
   }
-  return out;
+  if (!canSeal()) return { error: 'Este navegador no puede abrir listas con clave. Abre el enlace con Chrome o Safari.' };
+  const keys = store.get('pl.keys', {}) || {};
+  // Sin clave escrita, se prueban las que ya se usaron en este móvil (primero la de esta lista).
+  const tries = pin ? [normKey(pin)] : Array.from(new Set([keys[m[1]]].concat(Object.values(keys)).filter(Boolean))).slice(0, 5);
+  for (const k of tries) {
+    let o;
+    try { o = await unseal(m[2], k); } catch (e) { continue; }
+    const r = listFromObj(o);
+    if (r.list) { keys[r.list.id] = k; store.set('pl.keys', keys); }
+    return r;
+  }
+  return { needKey: true, error: pin ? 'Esa clave no abre esta lista. Revísala y vuelve a probar.' : '' };
+}
+
+// Resumen (entrenador → grupo de asistencia): texto normal, sin códigos. El registro lo vuelve a leer:
+//   📋 Sección · Equipo
+//   Fecha · Entrenador
+//   ✅ Asisten (12 de 15): …      (incluye a los que llegan tarde)
+//   ⏱️ Llegan tarde (1): …
+//   ❌ Faltan (2): …   o   ❌ Faltan: nadie
+//   ❔ Sin marcar (1): …
+//   #PL2 2026-09-17 idDeLaLista
+const HEAD = '📋';
+const RE_FOOT = /#PL2\s+(\d{4}-\d{2}-\d{2})\s+([A-Za-z0-9]{4,16})/;
+const FIELDS = [['A', 'Asisten'], ['T', 'Llegan tarde'], ['F', 'Faltan'], ['U', 'Sin marcar']];
+function parseReports(text){
+  const out = [];
+  let cur = null, broken = 0;
+  const names = s => /^\s*nadie\b/i.test(s) ? [] : s.split(/\s*,\s*/).map(x => cleanLabel(x)).filter(Boolean).slice(0, LIM.names);
+  const close = foot => {
+    if (!cur) return;
+    const got = FIELDS.some(f => cur[f[0]]);
+    if (foot && got) {
+      const st = {};
+      FIELDS.forEach(f => (cur[f[0]] || []).forEach(n => { st[n] = f[0]; }));
+      out.push({ i: foot[2], d: foot[1], s: cur.s, a: cur.a, m: cur.m, total: Math.max(cur.total, Object.keys(st).length), st });
+    } else if (got) broken++;
+    cur = null;
+  };
+  // Quita las marcas invisibles que mete WhatsApp al exportar (sobre todo en iPhone).
+  String(text || '').replace(/\p{Cf}/gu, '').split(/\r?\n/).forEach(line => {
+    const k = line.indexOf(HEAD);
+    if (k >= 0) {
+      close(null);
+      const head = line.slice(k + HEAD.length).trim(), p = head.search(/\s·\s/);
+      cur = { s: (p >= 0 ? cleanSec(head.slice(0, p)) : '') || 'Sin sección', a: cleanTeam(p >= 0 ? head.slice(p + 3) : head), m: '', total: 0, dated: false };
+      return;
+    }
+    if (!cur) return;
+    const foot = line.match(RE_FOOT);
+    if (foot) { close(foot); return; }
+    for (const f of FIELDS) {
+      const m = line.match(new RegExp(f[1] + '\\s*(?:\\((\\d+)(?:\\s+de\\s+(\\d+))?\\))?\\s*:\\s*(.*)$', 'i'));
+      if (m) {
+        cur[f[0]] = names(m[3]);
+        if (m[2]) cur.total = Math.min(999, parseInt(m[2], 10) || 0);
+        return;
+      }
+    }
+    if (!cur.dated && line.trim()) {
+      cur.dated = true;
+      const p = line.indexOf(' · ');
+      if (p >= 0) cur.m = clean(line.slice(p + 3), 40);
+    }
+  });
+  close(null);
+  return { found: out, broken };
 }
 
 /* ---------- Avisos, copiar y compartir ---------- */
@@ -430,16 +564,18 @@ const STATE_TXT = { A: 'Asiste', F: 'Falta', T: 'Llega tarde', '': 'Sin marcar' 
 
 /* ---------- Estado ---------- */
 const DEMO_ID = 'ejemplo';
-const DEMO = { id: DEMO_ID, demo: true, a: 'Ajedrez', g: 'Martes 16:00 · 3.º a 6.º EP', m: 'Monitor/a de ejemplo', o: '', t: '', added: 0,
+const DEMO = { id: DEMO_ID, demo: true, s: 'Ejemplo', a: 'Equipo de ejemplo', g: 'Martes y jueves 17:05', m: 'Entrenador/a de ejemplo', o: '', w: '', t: '', added: 0,
   n: ['Álex P. R.', 'Carla M. S.', 'Daniel F. G.', 'Emma L. V.', 'Hugo B. C.', 'Irene C. D.', 'Lucía G. P.', 'Mateo R. S.', 'Noa V. L.', 'Pablo D. A.', 'Sara O. M.', 'Unai T. F.'] };
 
 let incoming = '';
-try { incoming = /PL1\./.test(location.hash) ? decodeURIComponent(location.hash) : ''; } catch (e) {}
+try { incoming = /PL[123]\./.test(location.hash) ? decodeURIComponent(location.hash) : ''; } catch (e) {}
 let lists = store.get('pl.lists', null);
 const firstRun = !Array.isArray(lists);
 // Quien llega con el enlace de su lista no necesita la lista de ejemplo.
 const withDemo = firstRun && !incoming;
 if (firstRun) { lists = withDemo ? [DEMO] : []; store.set('pl.lists', lists); }
+// Las listas guardadas con la primera versión eran de paraescolares y no traían sección.
+lists = lists.filter(l => l && Array.isArray(l.n)).map(l => l.id === DEMO_ID ? Object.assign({}, DEMO) : Object.assign({ s: 'Paraescolares', w: '' }, l));
 let sessions = store.get('pl.sessions', {});
 if (!sessions || typeof sessions !== 'object') sessions = {};
 if (withDemo) {
@@ -447,11 +583,42 @@ if (withDemo) {
   sessions[DEMO_ID][today()] = { sent: null, marks: { 'Álex P. R.': 'A', 'Carla M. S.': 'A', 'Daniel F. G.': 'F', 'Emma L. V.': 'A', 'Hugo B. C.': 'T', 'Irene C. D.': 'A', 'Lucía G. P.': 'A' } };
   store.set('pl.sessions', sessions);
 }
-const cfg = Object.assign({ org: '', phone: '', url: '' }, store.get('pl.cfg', {}));
+// Secciones: a qué grupo de WhatsApp (o a qué número) mandan el resumen los entrenadores de cada una.
+const DEFAULT_SECS = ['Fútbol', 'Baloncesto', 'Gimnasia rítmica', 'Paraescolares'];
+const cfg = Object.assign({ org: '', phone: '', url: '', secs: null }, store.get('pl.cfg', {}));
+if (!Array.isArray(cfg.secs)) {
+  // La primera versión solo tenía un número de coordinación, el de paraescolares.
+  cfg.secs = DEFAULT_SECS.map(n => ({ n, w: '', t: n === 'Paraescolares' ? phone(cfg.phone) : '' }));
+}
+cfg.secs = cfg.secs.map(x => ({ n: cleanSec(x && x.n), w: clean(x && x.w, LIM.text), t: phone(x && x.t) })).filter(x => x.n);
+if (!cfg.url && /\.github\.io$/i.test(location.hostname)) cfg.url = location.origin + location.pathname;
+function secFor(name){ return cfg.secs.find(x => x.n === name) || { n: name || '', w: '', t: '' }; }
+
 let groups = store.get('pl.groups', []);
-let register = store.get('pl.register', []);
 if (!Array.isArray(groups)) groups = [];
-if (!Array.isArray(register)) register = [];
+groups = groups.filter(g => g && Array.isArray(g.n)).map(g => Object.assign({ s: 'Paraescolares' }, g));
+// Cada lista lleva su clave. Un mismo entrenador tiene la misma clave en todas sus listas.
+function coachKey(m, exceptId){
+  const k = clean(m, 40).toLocaleLowerCase('es');
+  const g = k && groups.find(x => x.id !== exceptId && x.key && clean(x.m, 40).toLocaleLowerCase('es') === k);
+  return g ? g.key : '';
+}
+if (groups.some(g => !g.key)) {
+  groups.forEach(g => { if (!g.key) g.key = coachKey(g.m, g.id) || newKey(); });
+  store.set('pl.groups', groups);
+}
+// Registro: {i:id de la lista, d:fecha, s:sección, a:equipo, m:entrenador, total, st:{etiqueta: A|T|F|U}}.
+let register = store.get('pl.reg2', null);
+if (!Array.isArray(register)) {
+  // El registro de la primera versión solo traía quién faltaba o llegaba tarde (old: no cuenta en los porcentajes).
+  const prev = store.get('pl.register', []);
+  register = (Array.isArray(prev) ? prev : []).filter(r => r && /^\d{4}-\d{2}-\d{2}$/.test(r.d)).map(r => {
+    const st = {};
+    [['t', 'T'], ['f', 'F'], ['s', 'U']].forEach(p => (Array.isArray(r[p[0]]) ? r[p[0]] : []).forEach(n => { st[n] = p[1]; }));
+    return { i: r.i || '', d: r.d, s: 'Paraescolares', a: r.a || '', m: r.m || '', total: r.n || Object.keys(st).length, st, old: true };
+  });
+  store.set('pl.reg2', register);
+}
 
 const savedMode = store.get('pl.mode', 'monitor');
 const S = {
@@ -459,7 +626,9 @@ const S = {
   listId: withDemo ? DEMO_ID : null,
   date: today(),
   sending: false, confirmRemove: false, addError: '', addText: '', armClear: 0,
-  tab: 'crear', draft: null, msg: null, regFilter: '', confirmClear: false, confirmDel: null
+  tab: 'crear', draft: null, msg: null, confirmClear: false, confirmDel: null,
+  regSec: '', regTeam: '', regPeriod: 'all', regText: '',
+  opening: false, lock: null, keyError: '', keyText: '', busy: false
 };
 
 function purgeOld(){
@@ -485,28 +654,38 @@ function counts(l, s){
 }
 
 function summary(l, d, s){
-  const F = l.n.filter(n => s.marks[n] === 'F');
-  const T = l.n.filter(n => s.marks[n] === 'T');
-  const U = l.n.filter(n => !['A', 'F', 'T'].includes(s.marks[n]));
+  const by = k => l.n.filter(n => (['A', 'F', 'T'].includes(s.marks[n]) ? s.marks[n] : 'U') === k);
+  const T = by('T'), F = by('F'), U = by('U');
+  const A = l.n.filter(n => s.marks[n] === 'A' || s.marks[n] === 'T');
   const lines = [
-    '📋 ' + l.a + (l.g ? ' · ' + l.g : ''),
+    HEAD + ' ' + (l.s || 'Sin sección') + ' · ' + l.a,
     longDate(d) + (l.m ? ' · ' + l.m : ''),
-    '✅ Asisten: ' + (l.n.length - F.length - U.length) + ' de ' + l.n.length,
-    F.length ? '❌ Faltan (' + F.length + '): ' + F.join(', ') : '❌ Faltan: nadie'
+    '✅ Asisten (' + A.length + ' de ' + l.n.length + '): ' + (A.length ? A.join(', ') : 'nadie')
   ];
   if (T.length) lines.push('⏱️ Llegan tarde (' + T.length + '): ' + T.join(', '));
+  lines.push(F.length ? '❌ Faltan (' + F.length + '): ' + F.join(', ') : '❌ Faltan: nadie');
   if (U.length) lines.push('❔ Sin marcar (' + U.length + '): ' + U.join(', '));
-  const code = 'PLR1.' + b64e({ v: 1, i: l.id, a: l.a, g: l.g, m: l.m, d, n: l.n.length, f: F, t: T, s: U });
-  return { text: lines.join('\n') + '\n\nPara el registro: ' + code, lines, code, U };
+  const foot = '#PL2 ' + d + ' ' + l.id;
+  return { text: lines.join('\n') + '\n' + foot, lines, foot, U };
+}
+// Adónde manda el entrenador el resumen: al grupo de su sección (lo elige en WhatsApp) o a un número.
+function destOf(l){
+  if (l.w) return { html: 'Envíalo al grupo <b>«' + esc(l.w) + '»</b>. Solo a ese grupo: nunca al de las familias.', num: '' };
+  if (l.t) return { html: 'WhatsApp se abrirá en el chat de coordinación con el mensaje ya escrito: solo falta darle a enviar.', num: l.t };
+  return { html: 'Envíalo al chat que te haya dicho coordinación. Nunca al grupo de las familias.', num: '' };
 }
 
 /* ---------- Pantallas del monitor ---------- */
 function setHeader(){
   ['monitor', 'coord', 'normas'].forEach(m => $('#m-' + m).setAttribute('aria-pressed', String(S.mode === m)));
-  let org = '';
-  if (S.mode === 'coord') org = cfg.org;
-  else { const l = getList(S.listId) || lists.find(x => !x.demo && x.o); org = l ? l.o : ''; }
-  $('#org-line').textContent = (org ? org + ' · ' : '') + (S.mode === 'coord' ? 'Coordinación de paraescolares' : 'Paraescolares');
+  let org = '', what = 'Deporte y paraescolares';
+  if (S.mode === 'coord') { org = cfg.org; what = 'Coordinación'; }
+  else {
+    const cur = getList(S.listId), l = cur || lists.find(x => !x.demo && x.o);
+    org = l ? l.o : '';
+    if (cur && cur.s && !cur.demo) what = cur.s;
+  }
+  $('#org-line').textContent = (org ? org + ' · ' : '') + what;
 }
 function render(){
   setHeader();
@@ -522,20 +701,39 @@ function statusChip(l){
   if (marked) return '<span class="chip late">Hoy: ' + marked + ' de ' + l.n.length + ' marcados, sin enviar</span>';
   return '<span class="chip">Hoy: sin pasar</span>';
 }
+function lockPanel(){
+  return `
+    <section class="panel keypanel" aria-labelledby="key-h">
+      <h3 id="key-h">Tu lista tiene clave</h3>
+      <p class="note">Escribe la clave que te ha dado coordinación: ${KEY_LEN} letras y números. Solo hace falta la primera vez.</p>
+      <form id="key-form" class="keyform" novalidate autocomplete="off">
+        <div class="field"><label for="key-in">Clave</label>
+          <input id="key-in" class="keyin" value="${esc(S.keyText)}" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" maxlength="12" placeholder="ABC-234"></div>
+        ${S.keyError ? `<p class="err" role="alert">${esc(S.keyError)}</p>` : ''}
+        <div class="btnrow"><button type="submit" class="btn primary" id="key-go">Abrir la lista</button><button type="button" class="btn ghost" data-act="unlock-cancel">Cancelar</button></div>
+      </form>
+    </section>`;
+}
 function renderHome(){
+  if (S.opening) { app.innerHTML = '<section class="wrap stack"><h2>Abriendo tu lista…</h2></section>'; return; }
   const cards = lists.map(l => `
     <button type="button" class="card" data-act="open" data-id="${esc(l.id)}">
       <span class="card-a">${esc(l.a)}${l.demo ? ' <span class="chip demo">Ejemplo</span>' : ''}</span>
       ${l.g ? `<span class="card-g">${esc(l.g)}</span>` : ''}
-      <span class="card-meta">${l.n.length} alumnos ${statusChip(l)}</span>
+      <span class="card-meta">${l.s && !l.demo ? `<span class="chip sec">${esc(l.s)}</span>` : ''}${l.n.length} en la lista ${statusChip(l)}</span>
     </button>`).join('');
+  // Con una lista pendiente de clave, solo se enseña eso (y las listas que ya hay).
+  if (S.lock) {
+    app.innerHTML = `<section class="wrap stack">${lockPanel()}${lists.length ? `<h2>Mis listas</h2><div class="cards">${cards}</div>` : ''}</section>`;
+    return;
+  }
   app.innerHTML = `
   <section class="wrap stack">
     <h2>Mis listas</h2>
     ${lists.length ? `<div class="cards">${cards}</div>` : '<p class="note">Todavía no tienes ninguna lista en este móvil.</p>'}
     <section class="panel" aria-labelledby="add-h">
       <h3 id="add-h">Añadir una lista</h3>
-      <p class="note">Lo normal es tocar el enlace que te manda coordinación por WhatsApp: la lista se abre sola. Si no funciona, copia el mensaje entero (lleva un código que empieza por <code>PL1.</code>) y pégalo aquí.</p>
+      <p class="note">Lo normal es tocar el enlace que te manda coordinación por WhatsApp: la lista se abre sola. Si no funciona, copia el mensaje entero (lleva un código que empieza por <code>PL</code>) y pégalo aquí.</p>
       <div class="field">
         <label for="code-in">Mensaje de coordinación</label>
         <textarea id="code-in" rows="4" placeholder="Pega aquí el mensaje">${esc(S.addText)}</textarea>
@@ -543,20 +741,48 @@ function renderHome(){
       ${S.addError ? `<p class="err" role="alert">${esc(S.addError)}</p>` : ''}
       <button type="button" class="btn primary" data-act="add">Guardar la lista en este móvil</button>
     </section>
-    <p class="note small">Las listas y las marcas se quedan solo en este móvil y se borran solas a los ${DAYS_KEPT} días. Antes de empezar, lee las <button type="button" class="linkbtn" data-act="mode" data-m="normas">normas de uso</button>.</p>
+    <p class="note small">Las listas y las marcas se quedan solo en este móvil, y las marcas se borran solas a los ${DAYS_KEPT} días. Si abres la app desde un acceso en la pantalla de inicio y no ves tu lista, vuelve a pegar aquí el mensaje de coordinación. Antes de empezar, lee las <button type="button" class="linkbtn" data-act="mode" data-m="normas">normas de uso</button>.</p>
   </section>`;
 }
 
-function addList(){
-  const text = ($('#code-in') || {}).value || '';
-  const r = parseListCode(text);
-  if (r.error) { S.addError = r.error; S.addText = text; render(); const t = $('#code-in'); if (t) t.focus(); return; }
-  const i = lists.findIndex(l => l.id === r.list.id);
-  if (i >= 0) lists[i] = r.list; else lists.push(r.list);
+const focusKey = () => { const k = $('#key-in'); if (k) { window.scrollTo(0, 0); k.focus(); } };
+function clearHash(){
+  // Quita la lista de la barra de direcciones: si el entrenador guarda la app, se guarda sin datos.
+  try { if (location.hash) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+}
+function saveImported(list){
+  const i = lists.findIndex(l => l.id === list.id);
+  if (i >= 0) lists[i] = list; else lists.push(list);
   store.set('pl.lists', lists);
-  Object.assign(S, { addError: '', addText: '', listId: r.list.id, date: today(), sending: false, confirmRemove: false });
+  Object.assign(S, { mode: 'monitor', addError: '', addText: '', lock: null, keyError: '', keyText: '', opening: false,
+    listId: list.id, date: today(), sending: false, confirmRemove: false });
+  store.set('pl.mode', 'monitor');
+  clearHash();
   render(); window.scrollTo(0, 0);
-  toast((i >= 0 ? 'Lista actualizada: ' : 'Lista guardada: ') + r.list.a);
+  toast((i >= 0 ? 'Lista actualizada: ' : 'Lista guardada en este móvil: ') + list.a);
+}
+async function addList(){
+  const text = ($('#code-in') || {}).value || '';
+  S.addText = text;
+  const r = await importList(text);
+  if (r.list) { saveImported(r.list); return; }
+  if (r.needKey) { Object.assign(S, { lock: { text }, keyError: '', keyText: '', addError: '' }); render(); focusKey(); return; }
+  S.addError = r.error; render();
+  const t = $('#code-in'); if (t) t.focus();
+}
+async function unlock(){
+  if (!S.lock || S.busy) return;
+  const raw = ($('#key-in') || {}).value || '';
+  S.keyText = raw;
+  if (normKey(raw).length < KEY_LEN) { S.keyError = 'Escribe la clave entera: son ' + KEY_LEN + ' letras y números.'; render(); focusKey(); return; }
+  S.busy = true;
+  const btn = $('#key-go');
+  if (btn) { btn.disabled = true; btn.textContent = 'Abriendo…'; }
+  const r = await importList(S.lock.text, raw);
+  S.busy = false;
+  if (r.list) { saveImported(r.list); return; }
+  S.keyError = r.error || 'Esa clave no abre esta lista.';
+  render(); focusKey();
 }
 
 function rowHTML(name, i, s){
@@ -572,22 +798,25 @@ function tallyHTML(c){
     <div><b class="n-no">${c.F}</b><span>Faltan</span></div>
     <div><b>${c.U}</b><span>Sin marcar</span></div>`;
 }
-function sendLabel(s){ return s.sent ? 'Enviada a las ' + fTime.format(new Date(s.sent)) + ' · Enviar de nuevo' : 'Enviar a coordinación'; }
+function sendLabel(l, s){
+  const to = l.w ? 'Enviar al grupo de ' + (l.s || 'asistencia') : 'Enviar a coordinación';
+  return s.sent ? 'Enviada a las ' + fTime.format(new Date(s.sent)) + ' · Enviar de nuevo' : to;
+}
 function sendPanel(l, s){
-  const sm = summary(l, S.date, s);
+  const sm = summary(l, S.date, s), dest = destOf(l);
   return `<div class="sendpanel" id="sendpanel">
     <h3>Enviar el resumen</h3>
+    <p class="dest">${dest.html}</p>
     ${sm.U.length ? `<p class="warn">Quedan ${sm.U.length} sin marcar. Puedes enviarlo igual: saldrán como «sin marcar».</p>` : ''}
     <pre class="preview">${esc(sm.lines.join('\n'))}
-
-<span class="code">Para el registro: ${esc(sm.code)}</span></pre>
+<span class="code">${esc(sm.foot)}</span></pre>
     <div class="btnrow">
-      <a class="btn primary" href="${esc(waLink(l.t, sm.text))}" target="_blank" rel="noopener" data-act="sent">Abrir WhatsApp</a>
+      <a class="btn primary" href="${esc(waLink(dest.num, sm.text))}" target="_blank" rel="noopener" data-act="sent">Abrir WhatsApp</a>
       ${canShare ? '<button type="button" class="btn" data-act="share-sum">Compartir…</button>' : ''}
       <button type="button" class="btn" data-act="copy-sum">Copiar</button>
       <button type="button" class="btn ghost" data-act="cancel-send">Volver</button>
     </div>
-    <p class="note small">${l.t ? 'WhatsApp se abrirá en el chat de coordinación con el mensaje ya escrito: solo falta darle a enviar.' : 'Esta lista no trae el número de coordinación: WhatsApp te dejará elegir el chat.'}</p>
+    <p class="note small">No borres la última línea (la que empieza por <code>#PL2</code>): con ella coordinación pasa el resumen al registro.</p>
   </div>`;
 }
 function renderList(){
@@ -596,7 +825,7 @@ function renderList(){
   <section class="board">
     <div class="wrap">
       <button type="button" class="back" data-act="home">‹ Mis listas</button>
-      <h1 class="board-title">${esc(l.a)}${l.demo ? ' <span class="chip demo">Ejemplo</span>' : ''}</h1>
+      <h1 class="board-title">${esc(l.a)}${l.demo ? ' <span class="chip demo">Ejemplo</span>' : l.s ? ` <span class="chip sec">${esc(l.s)}</span>` : ''}</h1>
       <p class="board-sub">${esc([l.g, l.m].filter(Boolean).join(' · '))}</p>
       <div class="dateline">
         <label for="date-in">Sesión</label>
@@ -623,7 +852,7 @@ function renderList(){
       </div>` : '<button type="button" class="linkbtn danger" data-act="remove">Quitar esta lista del móvil</button>'}
     </div>
   </section>
-  <div class="dock${S.sending ? ' open' : ''}"><div class="wrap">${S.sending ? sendPanel(l, s) : `<button type="button" class="btn primary block" data-act="send">${sendLabel(s)}</button>`}</div></div>`;
+  <div class="dock${S.sending ? ' open' : ''}"><div class="wrap">${S.sending ? sendPanel(l, s) : `<button type="button" class="btn primary block" data-act="send">${esc(sendLabel(l, s))}</button>`}</div></div>`;
 }
 
 function markRow(i, k){
@@ -653,24 +882,28 @@ function renderNormas(){
   app.innerHTML = `
   <section class="wrap stack">
     <h2>Normas de uso</h2>
-    <p class="prose">Esta app sirve para una sola cosa: pasar lista en tu actividad y avisar a coordinación de quién ha venido. Trabajas con datos de menores, así que te pedimos esto:</p>
+    <p class="prose">Esta app sirve para una sola cosa: pasar lista en tu equipo o actividad y avisar a coordinación de quién ha venido. Trabajas con datos de menores, así que te pedimos esto:</p>
     <ol class="rules">
       <li><b>Úsala solo para pasar lista de tu grupo.</b> Nada de otros usos.</li>
-      <li><b>No reenvíes el código ni hagas capturas de la lista.</b> Si otra persona la necesita, que se la pida a coordinación.</li>
-      <li><b>No escribas por WhatsApp datos de salud, fotos ni comentarios sobre los niños.</b> Una alergia, una lesión o un incidente se comunican por el canal oficial del centro.</li>
-      <li><b>Guarda secreto sobre lo que sepas de los alumnos</b>, también cuando dejes de trabajar en el centro (artículo 5 de la Ley Orgánica 3/2018).</li>
-      <li><b>Ten el móvil protegido con bloqueo de pantalla.</b> Si lo pierdes o dejas la actividad, avisa a coordinación y quita tus listas con «Quitar esta lista del móvil».</li>
+      <li><b>Envía el resumen solo al grupo de asistencia de tu sección.</b> En ese grupo solo están sus entrenadores y su coordinación. Si coordinación te indica otro chat, usa ese. Nunca lo mandes al grupo de las familias ni a otras personas.</li>
+      <li><b>No reenvíes tu lista ni su clave, y no hagas capturas.</b> Si otra persona la necesita, que se la pida a coordinación.</li>
+      <li><b>No escribas por WhatsApp datos de salud, fotos ni comentarios sobre los niños.</b> Una alergia, una lesión o un incidente se comunican por el canal oficial.</li>
+      <li><b>Guarda secreto sobre lo que sepas de los niños.</b> También cuando dejes de entrenar aquí (artículo 5 de la Ley Orgánica 3/2018).</li>
+      <li><b>Ten el móvil protegido con bloqueo de pantalla.</b> Si lo pierdes o dejas el equipo, avisa a coordinación y quita tus listas con «Quitar esta lista del móvil».</li>
       <li><b>Envía el resumen en cuanto acabes de pasar lista.</b> Así coordinación sabe enseguida si falta alguien que debería estar.</li>
     </ol>
     <h3>Qué guarda la app</h3>
     <div class="prose">
-      <p>Solo el <b>nombre y las iniciales de los apellidos</b> de cada alumno, el nombre de la actividad y tus marcas. Ni apellidos completos, ni cursos, ni fotos, ni teléfonos, ni datos de salud.</p>
-      <p>Todo se queda <b>en este móvil</b>: la app no tiene servidor ni cuentas, y no manda nada a internet por su cuenta. Lo único que sale es el resumen que tú envías a coordinación. Las marcas se borran solas a los ${DAYS_KEPT} días.</p>
-      <p>Aunque solo lleve iniciales, sigue siendo un dato personal, porque tú sabes quién es cada niño. Por eso rigen las mismas normas que para cualquier lista del centro.</p>
+      <p>Solo el <b>nombre y las iniciales de los apellidos</b> de cada niño, el nombre del equipo o actividad y tus marcas. Ni apellidos completos, ni cursos, ni fotos, ni teléfonos, ni datos de salud.</p>
+      <p>Todo se queda <b>en este móvil</b>: la app no tiene servidor ni cuentas, y no envía tus listas ni tus marcas a ningún sitio por su cuenta. Lo único que sale es el resumen que tú mandas por WhatsApp. Las marcas se borran solas a los ${DAYS_KEPT} días.</p>
+      <p>La lista viaja <b>cifrada</b> en el enlace: sin la clave no se puede abrir, aunque alguien consiga el mensaje.</p>
+      <p>Aunque solo lleve iniciales, sigue siendo un dato personal, porque tú sabes quién es cada niño. Por eso rigen las mismas normas que para cualquier lista del club o del colegio.</p>
     </div>
     <h3>Para coordinación</h3>
     <div class="prose">
-      <p>Antes de usarla con alumnos reales, el centro tiene que aprobarla: la dirección y la persona delegada de protección de datos (DPD). Si algún monitor trabaja para una empresa externa, esa empresa necesita un contrato de encargo del tratamiento. Y las familias tienen que estar informadas de que se controla la asistencia a paraescolares.</p>
+      <p>Cada sección tiene su propio grupo de asistencia, con su coordinación y sus entrenadores: así cada coordinador recibe solo lo de su sección. En esos grupos no entran familias ni menores de edad.</p>
+      <p>El registro se guarda solo en el ordenador o el móvil donde lo cargas. Pásalo al sitio que tenga previsto el club (por ejemplo, su OneDrive) y, al acabar la temporada, vacíalo aquí y vacía también los grupos de asistencia.</p>
+      <p>Si algún entrenador o monitor trabaja para una empresa externa, esa empresa necesita un contrato de encargo del tratamiento. Y las familias tienen que saber que se controla la asistencia.</p>
     </div>
   </section>`;
 }
@@ -685,7 +918,19 @@ const FORMATS = [
   ['c-apn', 'Columnas de Excel: Apellidos · Nombre'],
   ['c-nap', 'Columnas de Excel: Nombre · Apellidos']
 ];
-const newDraft = () => ({ id: null, a: '', g: '', m: '', fmt: 'auto', raw: '', people: [] });
+const newDraft = () => ({ id: null, s: S.lastSec || (cfg.secs[0] || {}).n || '', a: '', g: '', m: '', fmt: 'auto', raw: '', people: [] });
+// Sugerencias para el nombre del equipo: categorías habituales y equipos ya creados en esa sección.
+const TEAM_HINTS = {
+  'Fútbol': ['Prebenjamín', 'Benjamín', 'Alevín', 'Infantil', 'Cadete', 'Juvenil', 'Sénior', 'Porteros'],
+  'Baloncesto': ['Babys', 'Premini', 'Mini', 'Infantil', 'Cadete', 'Júnior', 'Sénior']
+};
+function secOptions(cur){
+  const names = cfg.secs.map(x => x.n);
+  if (cur && !names.includes(cur)) names.push(cur);
+  return names.map(n => `<option value="${esc(n)}"${n === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
+}
+function secOrder(n){ const i = cfg.secs.findIndex(x => x.n === n); return i < 0 ? 99 : i; }
+const bySecTeam = (x, y) => secOrder(x.s) - secOrder(y.s) || (x.s || '').localeCompare(y.s || '', 'es') || x.a.localeCompare(y.a, 'es', { numeric: true });
 
 function renderCoord(){
   if (!S.draft) S.draft = newDraft();
@@ -698,18 +943,21 @@ function renderCoord(){
 }
 
 function coordCreate(){
-  const d = S.draft, people = d.people;
+  const d = S.draft, people = d.people, dest = secFor(d.s);
+  const hints = Array.from(new Set(groups.filter(g => g.s === d.s).map(g => g.a).concat(TEAM_HINTS[d.s] || []))).sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
   return `
     <h2>${d.id ? 'Editar la lista' : 'Crear una lista'}</h2>
     <p class="callout">Los apellidos completos <b>no salen de este ordenador</b>: la app los convierte aquí mismo en «Nombre + iniciales» y solo comparte eso.</p>
-    ${cfg.phone ? '' : '<p class="warn">Falta tu número de WhatsApp en <button type="button" class="linkbtn" data-act="tab" data-t="ajustes">Ajustes</button>. Sin él, cada monitor tendrá que buscar tu chat para mandarte la asistencia.</p>'}
+    ${d.s && !dest.w && !dest.t ? `<p class="warn">La sección «${esc(d.s)}» no tiene grupo de WhatsApp en <button type="button" class="linkbtn" data-act="tab" data-t="ajustes">Ajustes</button>. Sin él, el entrenador no sabrá adónde mandar la asistencia.</p>` : ''}
     <div class="grid2">
-      <div class="field"><label for="c-a">Actividad</label><input id="c-a" data-d="a" maxlength="60" value="${esc(d.a)}" placeholder="Ajedrez"></div>
-      <div class="field"><label for="c-g">Grupo y horario</label><input id="c-g" data-d="g" maxlength="60" value="${esc(d.g)}" placeholder="Martes 16:00 · 3.º a 6.º EP"></div>
-      <div class="field"><label for="c-m">Monitor/a</label><input id="c-m" data-d="m" maxlength="40" value="${esc(d.m)}" placeholder="Solo el nombre"></div>
+      <div class="field"><label for="c-s">Sección</label><select id="c-s" data-d="s">${secOptions(d.s)}</select></div>
+      <div class="field"><label for="c-a">Equipo o actividad</label><input id="c-a" data-d="a" maxlength="60" value="${esc(d.a)}" placeholder="Infantil masculino" list="c-a-list" autocomplete="off">
+        <datalist id="c-a-list">${hints.map(h => `<option value="${esc(h)}"></option>`).join('')}</datalist></div>
+      <div class="field"><label for="c-g">Días y hora</label><input id="c-g" data-d="g" maxlength="60" value="${esc(d.g)}" placeholder="Lunes y miércoles 17:05"></div>
+      <div class="field"><label for="c-m">Entrenador/a o monitor/a</label><input id="c-m" data-d="m" maxlength="40" value="${esc(d.m)}" placeholder="Solo el nombre"></div>
     </div>
     <div class="field">
-      <label for="c-names">${people.length ? 'Añadir más alumnos' : 'Alumnado'}</label>
+      <label for="c-names">${people.length ? 'Añadir más nombres' : 'Jugadores o alumnos'}</label>
       <span class="hint">Pégalo desde Alexia o Excel, una persona por línea. Copia solo las columnas de nombre y apellidos.</span>
       <textarea id="c-names" data-d="raw" rows="7" placeholder="GARCÍA PÉREZ, Lucía&#10;RODRÍGUEZ SANZ, Mateo&#10;DE LA FUENTE LÓPEZ, Noa">${esc(d.raw)}</textarea>
     </div>
@@ -727,29 +975,30 @@ function coordCreate(){
 }
 
 function coordPreview(d){
-  const dupes = countBy(d.people.map(p => clean(p.label, LIM.label)));
+  const dupes = countBy(d.people.map(p => cleanLabel(p.label)));
   return `
     <section class="panel" aria-labelledby="pv-h">
-      <h3 id="pv-h">Así lo verá el monitor · ${d.people.length} alumnos</h3>
+      <h3 id="pv-h">Así lo verá el entrenador · ${d.people.length} en la lista</h3>
       <p class="note">Puedes corregir cualquier nombre. En gris, lo que pegaste: solo lo ves tú y no se guarda.</p>
       <ol class="plist">${d.people.map((p, i) => `
         <li>
-          <input id="lbl-${i}" data-lbl="${i}" maxlength="40" value="${esc(p.label)}" aria-label="Alumno ${i + 1}">
+          <input id="lbl-${i}" data-lbl="${i}" maxlength="40" value="${esc(p.label)}" aria-label="Nombre ${i + 1}">
           <span class="src">${esc(p.src || '')}
             ${p.doubt ? '<span class="chip late">Revisa: ¿nombre compuesto?</span>' : ''}
             ${p.widened ? '<span class="chip">Coincidía con otro: más letras</span>' : ''}
-            ${dupes[clean(p.label, LIM.label)] > 1 ? '<span class="chip no">Repetido</span>' : ''}
+            ${dupes[cleanLabel(p.label)] > 1 ? '<span class="chip no">Repetido</span>' : ''}
             <button type="button" class="linkbtn danger" data-act="c-drop" data-i="${i}">Quitar</button>
           </span>
         </li>`).join('')}
       </ol>
-      <button type="button" class="btn primary" data-act="c-generate">${d.id ? 'Guardar cambios y crear el mensaje' : 'Crear el mensaje para el monitor'}</button>
+      <button type="button" class="btn primary" data-act="c-generate">${d.id ? 'Guardar cambios y crear el mensaje' : 'Crear el mensaje para el entrenador'}</button>
     </section>`;
 }
 
 function monitorMessage(g){
-  const code = listCode(g, cfg);
-  const lines = [(g.m ? 'Hola, ' + g.m + '.' : 'Hola.') + ' Te paso la lista de ' + g.a + (g.g ? ' (' + g.g + ')' : '') + ' para pasar lista.', ''];
+  const code = listCode(g), dest = secFor(g.s);
+  if (!code) return null;
+  const lines =[(g.m ? 'Hola, ' + g.m + '.' : 'Hola.') + ' Te paso la lista de ' + g.a + (g.s ? ' (' + g.s + ')' : '') + ' para pasar lista en el móvil.', ''];
   if (cfg.url) {
     // La lista va detrás de «#»: esa parte del enlace no llega al servidor que aloja la app.
     lines.push('Toca este enlace y se abrirá la app con tu lista:', cfg.url + '#' + code, '',
@@ -757,22 +1006,30 @@ function monitorMessage(g){
   } else {
     lines.push('Abre la app Pasa lista, toca «Añadir una lista» y pega este mensaje entero.', '', code);
   }
-  lines.push('', 'Solo lleva nombres e iniciales. Por favor, no lo reenvíes ni hagas capturas.');
+  lines.push('', 'La primera vez te pedirá una clave, que te doy aparte.');
+  if (dest.w) lines.push('', 'Cuando pases lista, envía el resumen al grupo «' + dest.w + '». Solo a ese grupo.');
+  lines.push('', 'Solo lleva nombres e iniciales. Por favor, no reenvíes este mensaje ni la clave, y no hagas capturas.');
   return lines.join('\n');
 }
 function coordMessage(){
   const g = groups.find(x => x.id === S.msg); if (!g) return '';
-  const text = monitorMessage(g);
+  const text = monitorMessage(g), who = g.m || 'el entrenador';
+  if (!text) return `<section class="panel" id="msg-panel" aria-labelledby="msg-h"><h3 id="msg-h">Mensaje para ${esc(who)}</h3><p class="note">Cifrando la lista…</p></section>`;
+  const shared = groups.filter(x => x.id !== g.id && x.key === g.key).length;
   return `
     <section class="panel" id="msg-panel" aria-labelledby="msg-h">
-      <h3 id="msg-h">Mensaje para ${esc(g.m || 'el monitor')}</h3>
+      <h3 id="msg-h">1 · Mensaje para ${esc(who)}</h3>
       <pre class="preview">${esc(text)}</pre>
       <div class="btnrow">
         <a class="btn primary" href="${esc(waLink('', text))}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
         ${canShare ? '<button type="button" class="btn" data-act="c-share">Compartir…</button>' : ''}
         <button type="button" class="btn" data-act="c-copy">Copiar mensaje</button>
       </div>
-      <p class="note small">WhatsApp te pedirá elegir el chat del monitor. También puedes mandarlo desde el correo del colegio: el monitor lo copia y lo pega igual.</p>
+      <p class="note small">WhatsApp te pedirá elegir el chat: mándaselo por privado a ${esc(g.m || 'su entrenador')}, no al grupo de asistencia. También puedes mandarlo por correo: lo copia y lo pega igual.</p>
+      <h3>2 · Clave de la lista</h3>
+      <p class="keybox">${esc(showKey(g.key))}</p>
+      <p class="note">Dásela en persona o por teléfono. Si se la mandas por WhatsApp, que sea en un mensaje aparte. Sin la clave, el enlace no abre la lista.${shared ? ' Es la misma clave de sus otras listas.' : ''}</p>
+      <div class="btnrow"><button type="button" class="btn sm" data-act="k-copy">Copiar la clave</button></div>
     </section>`;
 }
 
@@ -786,7 +1043,7 @@ function convertDraft(){
   const parsed = d.raw.split(/\r?\n/).map(x => parsePerson(x, d.fmt)).filter(Boolean);
   if (!parsed.length) { toast('No encuentro nombres. Pega una persona por línea.'); return; }
   const fresh = buildLabels(parsed);
-  const taken = new Set(d.people.map(p => clean(p.label, LIM.label)));
+  const taken = new Set(d.people.map(p => cleanLabel(p.label)));
   fresh.forEach(p => {
     let l = p.label, n = 2;
     while (taken.has(l)) { l = p.label + ' (' + n++ + ')'; p.widened = true; }
@@ -800,17 +1057,23 @@ function convertDraft(){
 }
 function generate(){
   const d = S.draft;
-  d.a = clean(d.a, LIM.text); d.g = clean(d.g, LIM.text); d.m = clean(d.m, 40);
-  if (!d.a) { toast('Escribe el nombre de la actividad'); const el = $('#c-a'); if (el) el.focus(); return; }
-  const labels = d.people.map(p => clean(p.label, LIM.label));
+  d.s = cleanSec(d.s); d.a = cleanTeam(d.a); d.g = clean(d.g, LIM.text); d.m = clean(d.m, 40);
+  if (!d.s) { toast('Elige la sección (se añaden en Ajustes)'); return; }
+  if (!d.a) { toast('Escribe el nombre del equipo o la actividad'); const el = $('#c-a'); if (el) el.focus(); return; }
+  const labels = d.people.map(p => cleanLabel(p.label));
   if (labels.some(l => !l)) { toast('Hay un nombre vacío: escríbelo o quítalo'); return; }
   const c = countBy(labels);
   if (labels.some(l => c[l] > 1)) { render(); toast('Hay nombres repetidos: cambia alguno para distinguirlos'); return; }
-  const g = { id: d.id || rid(), a: d.a, g: d.g, m: d.m, n: labels, updated: Date.now() };
+  // Si cambia el entrenador, cambia la clave: el anterior ya no podrá abrir la lista nueva.
+  const prev = groups.find(x => x.id === d.id);
+  const sameCoach = prev && clean(prev.m, 40).toLocaleLowerCase('es') === d.m.toLocaleLowerCase('es');
+  const key = (sameCoach && prev.key) || coachKey(d.m, d.id) || newKey();
+  const g = { id: d.id || rid(), s: d.s, a: d.a, g: d.g, m: d.m, n: labels, key, updated: Date.now() };
   const i = groups.findIndex(x => x.id === g.id);
   if (i >= 0) groups[i] = g; else groups.unshift(g);
   store.set('pl.groups', groups);
-  S.draft = { id: g.id, a: g.a, g: g.g, m: g.m, fmt: d.fmt, raw: '', people: labels.map(l => ({ label: l, src: '' })) };
+  S.lastSec = g.s;
+  S.draft = { id: g.id, s: g.s, a: g.a, g: g.g, m: g.m, fmt: d.fmt, raw: '', people: labels.map(l => ({ label: l, src: '' })) };
   S.msg = g.id;
   render();
   const p = $('#msg-panel'); if (p) p.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -819,12 +1082,12 @@ function generate(){
 function coordLists(){
   if (!groups.length) return '<h2>Listas enviadas</h2><p class="note">Aún no has creado ninguna lista. Empieza en <button type="button" class="linkbtn" data-act="tab" data-t="crear">Crear lista</button>.</p>';
   return `<h2>Listas enviadas</h2>
-    <p class="note">Se guardan solo en este ordenador, con nombres e iniciales. Si cambias una lista, reenvía el mensaje: al pegarlo, el monitor la actualiza sin perder sus marcas.</p>
-    ${groups.map(g => `
+    <p class="note">Se guardan solo en este ordenador, con nombres e iniciales. Si cambias una lista, reenvía el mensaje: al tocarlo, el entrenador la actualiza sin perder sus marcas.</p>
+    ${groups.slice().sort(bySecTeam).map(g => `
     <article class="gcard">
       <div class="card-a">${esc(g.a)}</div>
       <div class="card-g">${esc([g.g, g.m].filter(Boolean).join(' · '))}</div>
-      <div class="card-meta">${g.n.length} alumnos · actualizada el ${esc(numDate(ymd(new Date(g.updated || Date.now()))))}</div>
+      <div class="card-meta"><span class="chip sec">${esc(g.s || 'Sin sección')}</span>${g.n.length} en la lista · actualizada el ${esc(numDate(ymd(new Date(g.updated || Date.now()))))}</div>
       ${S.confirmDel === g.id ? `
       <p><b>¿Borrar esta lista de tu ordenador?</b> Los monitores la conservan en su móvil hasta que la quiten.</p>
       <div class="btnrow"><button type="button" class="btn sm danger" data-act="g-del-yes" data-id="${esc(g.id)}">Borrar</button><button type="button" class="btn sm ghost" data-act="g-del-no">Cancelar</button></div>` : `
@@ -838,106 +1101,259 @@ function coordLists(){
 
 function sampleText(){
   const day = n => ymd(new Date(Date.now() - n * 864e5));
-  const base = { v: 1, i: DEMO_ID, a: 'Ajedrez (ejemplo)', g: 'Martes 16:00 · 3.º a 6.º EP', m: 'Monitor/a de ejemplo', n: 12 };
+  const marks = extra => { const m = {}; DEMO.n.forEach(n => { m[n] = 'A'; }); return Object.assign(m, extra); };
   return [
-    { d: day(14), f: ['Daniel F. G.'], t: [], s: [] },
-    { d: day(7), f: ['Daniel F. G.', 'Noa V. L.'], t: ['Hugo B. C.'], s: [] },
-    { d: day(0), f: ['Daniel F. G.'], t: ['Hugo B. C.'], s: ['Sara O. M.'] }
-  ].map(r => {
-    const o = Object.assign({}, base, r);
-    return '[' + numDate(o.d) + '] Monitor/a de ejemplo: 📋 ' + o.a + ' · ' + o.g + '\n✅ Asisten: ' + (o.n - o.f.length - o.s.length) + ' de ' + o.n +
-      '\n❌ Faltan (' + o.f.length + '): ' + o.f.join(', ') + '\nPara el registro: PLR1.' + b64e(o);
+    [14, { 'Daniel F. G.': 'F' }],
+    [7, { 'Daniel F. G.': 'F', 'Noa V. L.': 'F', 'Hugo B. C.': 'T' }],
+    [0, { 'Daniel F. G.': 'F', 'Hugo B. C.': 'T', 'Sara O. M.': '' }]
+  ].map(p => {
+    const d = day(p[0]);
+    // Así salen los mensajes al exportar un chat de WhatsApp en Android.
+    return d.slice(8) + '/' + d.slice(5, 7) + '/' + d.slice(2, 4) + ', 19:02 - Entrenador/a de ejemplo: ' + summary(DEMO, d, { marks: marks(p[1]) }).text;
   }).join('\n');
 }
-function regRows(){
-  return register.filter(r => !S.regFilter || r.a === S.regFilter);
+
+/* Registro: filtros y cuentas */
+const PERIODS = [['all', 'Todo'], ['7', 'Últimos 7 días'], ['30', 'Últimos 30 días'], ['month', 'Este mes'], ['prev', 'Mes pasado']];
+const LOW = 75;
+// «#» no puede ir en la sección ni en el equipo: sirve de separador.
+const teamKey = r => (r.s || '') + '#' + r.a;
+function inPeriod(d){
+  const p = S.regPeriod, now = new Date();
+  if (p === '7' || p === '30') return d >= ymd(new Date(Date.now() - (+p - 1) * 864e5));
+  if (p === 'month') return d.slice(0, 7) === today().slice(0, 7);
+  if (p === 'prev') return d.slice(0, 7) === ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+  return true;
 }
+function regRows(){
+  return register.filter(r => (!S.regSec || (r.s || '') === S.regSec) && (!S.regTeam || teamKey(r) === S.regTeam) && inPeriod(r.d));
+}
+function namesBy(r){
+  const g = { A: [], T: [], F: [], U: [] };
+  Object.keys(r.st).forEach(n => { if (g[r.st[n]]) g[r.st[n]].push(n); });
+  return g;
+}
+// Los que vinieron (con los que llegaron tarde). Las sesiones de la primera versión no traían la lista entera.
+function came(r){ const g = namesBy(r); return r.old ? Math.max(0, r.total - g.F.length - g.U.length) : g.A.length + g.T.length; }
+const pct = (a, b) => b ? Math.round(a / b * 100) : null;
+const pctCell = p => `<td class="num${p != null && p < LOW ? ' low' : ''}">${p == null ? '—' : p + ' %'}</td>`;
+
+function teamsOverview(rows){
+  const m = new Map();
+  rows.forEach(r => {
+    const k = teamKey(r);
+    let t = m.get(k);
+    if (!t) { t = { s: r.s, a: r.a, n: 0, came: 0, known: 0, last: '' }; m.set(k, t); }
+    const c = came(r);
+    t.n++; t.came += c; t.known += c + namesBy(r).F.length;
+    if (r.d > t.last) t.last = r.d;
+  });
+  return Array.from(m.values()).sort(bySecTeam);
+}
+function playersOf(rows){
+  const m = new Map();
+  rows.filter(r => !r.old).forEach(r => Object.keys(r.st).forEach(n => {
+    let p = m.get(n);
+    if (!p) { p = { n, A: 0, T: 0, F: 0, U: 0 }; m.set(n, p); }
+    if (p[r.st[n]] != null) p[r.st[n]]++;
+  }));
+  return Array.from(m.values())
+    .map(p => Object.assign(p, { pct: pct(p.A + p.T, p.A + p.T + p.F) }))
+    .sort((x, y) => (x.pct == null ? 101 : x.pct) - (y.pct == null ? 101 : y.pct) || x.n.localeCompare(y.n, 'es'));
+}
+
+function regOverview(rows){
+  if (!rows.length) return '<p class="note">No hay sesiones en este periodo.</p>';
+  return `<div class="tablewrap"><table>
+    <thead><tr><th>Equipo</th><th class="num">Sesiones</th><th class="num">Asistencia</th><th>Último resumen</th></tr></thead>
+    <tbody>${teamsOverview(rows).map(t => `<tr>
+      <td><button type="button" class="linkbtn" data-act="r-team" data-k="${esc(teamKey(t))}">${esc(t.a)}</button>${S.regSec ? '' : `<br><span class="note small">${esc(t.s || 'Sin sección')}</span>`}</td>
+      <td class="num">${t.n}</td>
+      ${pctCell(pct(t.came, t.known))}
+      <td style="white-space:nowrap">${esc(shortDate(t.last))}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <p class="note small">Toca un equipo para ver sus sesiones y la asistencia de cada jugador. En rojo, por debajo del ${LOW} %. Los que quedaron sin marcar no cuentan. Si un equipo lleva días sin «último resumen», su entrenador no está enviando.</p>`;
+}
+function regTeam(rows){
+  if (!rows.length) return '<p class="note">No hay sesiones de este equipo en este periodo.</p>';
+  const ps = playersOf(rows);
+  const players = ps.length ? `
+    <section class="panel" aria-labelledby="pl-h">
+      <h3 id="pl-h">Asistencia por jugador · ${rows.length} ${rows.length === 1 ? 'sesión' : 'sesiones'}</h3>
+      <p class="note">De menos a más asistencia. En rojo, por debajo del ${LOW} %. «Vino» incluye a los que llegaron tarde.</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Jugador</th><th class="num">Asistencia</th><th class="num">Vino</th><th class="num">Tarde</th><th class="num">Faltó</th><th class="num">Sin marcar</th></tr></thead>
+        <tbody>${ps.map(p => `<tr><td>${esc(p.n)}</td>${pctCell(p.pct)}<td class="num">${p.A + p.T}</td><td class="num">${p.T}</td><td class="num">${p.F}</td><td class="num">${p.U}</td></tr>`).join('')}</tbody>
+      </table></div>
+    </section>` : '';
+  return players + `
+    <h3>Sesiones</h3>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Fecha</th><th class="num">Asisten</th><th>Faltan</th><th>Llegan tarde</th><th>Sin marcar</th></tr></thead>
+      <tbody>${rows.map(r => { const g = namesBy(r); return `<tr>
+        <td style="white-space:nowrap">${esc(shortDate(r.d))}${r.m ? `<br><span class="note small">${esc(r.m)}</span>` : ''}</td>
+        <td class="num">${came(r)}/${r.total}</td>
+        <td>${g.F.length ? esc(g.F.join(', ')) : '—'}</td>
+        <td>${g.T.length ? esc(g.T.join(', ')) : '—'}</td>
+        <td>${g.U.length ? esc(g.U.join(', ')) : '—'}</td></tr>`; }).join('')}</tbody>
+    </table></div>`;
+}
+
 function coordRegister(){
-  const acts = Array.from(new Set(register.map(r => r.a))).sort((a, b) => a.localeCompare(b, 'es'));
-  if (S.regFilter && !acts.includes(S.regFilter)) S.regFilter = '';
-  const rows = regRows().sort((x, y) => y.d.localeCompare(x.d) || x.a.localeCompare(y.a, 'es'));
-  let absences = '';
-  if (S.regFilter && rows.length) {
-    const c = countBy([].concat.apply([], rows.map(r => r.f)));
-    const top = Object.keys(c).sort((a, b) => c[b] - c[a] || a.localeCompare(b, 'es'));
-    absences = top.length ? `
-      <section class="panel" aria-labelledby="ab-h"><h3 id="ab-h">Faltas por alumno · ${rows.length} sesiones</h3>
-        <ul class="bars">${top.map(n => `<li><span>${esc(n)}</span><span><span class="bar" style="display:block;width:${Math.round(c[n] / c[top[0]] * 100)}%"></span></span><span class="n">${c[n]}</span></li>`).join('')}</ul>
-      </section>` : `<p class="note">Nadie ha faltado en las ${rows.length} sesiones registradas.</p>`;
-  }
+  const secs = Array.from(new Set(register.map(r => r.s || ''))).sort((a, b) => secOrder(a) - secOrder(b) || a.localeCompare(b, 'es'));
+  if (S.regSec && !secs.includes(S.regSec)) S.regSec = '';
+  const teams = Array.from(new Map(register.filter(r => !S.regSec || (r.s || '') === S.regSec).map(r => [teamKey(r), r])).values()).sort(bySecTeam);
+  if (S.regTeam && !teams.some(r => teamKey(r) === S.regTeam)) S.regTeam = '';
+  const rows = regRows().sort((x, y) => y.d.localeCompare(x.d) || bySecTeam(x, y));
+  const opt = (v, label, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(label)}</option>`;
   return `
     <h2>Registro de asistencia</h2>
-    <p class="note">Copia los resúmenes que te lleguen por WhatsApp (puedes seleccionar varios mensajes a la vez) y pégalos aquí. El registro se guarda solo en este ordenador.</p>
-    <div class="field"><label for="r-in">Resúmenes recibidos</label><textarea id="r-in" rows="4" placeholder="Pega aquí uno o varios resúmenes">${esc(S.regText || '')}</textarea></div>
+    <div class="prose note">
+      <p>Aquí se juntan los resúmenes que los entrenadores mandan a los grupos de asistencia. Lo más cómodo es cargar el chat entero: en el móvil, abre el grupo, toca su nombre y elige <b>Exportar chat → Sin archivos</b>. Guarda el archivo y cárgalo con el botón. Puedes cargarlo cuantas veces quieras: lo repetido no se duplica.</p>
+      <p>El registro se guarda solo en este dispositivo.</p>
+    </div>
     <div class="btnrow">
-      <button type="button" class="btn primary" data-act="r-add">Añadir al registro</button>
+      <label class="btn primary filebtn">Cargar chat exportado<input type="file" id="r-file" accept=".txt,.zip,text/plain,application/zip"></label>
       ${register.length ? '' : '<button type="button" class="btn ghost" data-act="r-sample">Probar con un ejemplo</button>'}
     </div>
+    <div class="field"><label for="r-in">O pega aquí uno o varios mensajes</label><textarea id="r-in" rows="3" placeholder="Pega los resúmenes, con su última línea #PL2">${esc(S.regText)}</textarea></div>
+    <div class="btnrow"><button type="button" class="btn" data-act="r-add">Añadir lo pegado</button></div>
     ${register.length ? `
-    <div class="field" style="max-width:360px"><label for="r-filter">Actividad</label>
-      <select id="r-filter"><option value="">Todas (${register.length} sesiones)</option>${acts.map(a => `<option value="${esc(a)}"${a === S.regFilter ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
-      ${S.regFilter ? '' : '<span class="hint">Elige una actividad para ver las faltas por alumno.</span>'}
+    <div class="filters">
+      <div class="field"><label for="r-sec">Sección</label><select id="r-sec">${opt('', 'Todas', S.regSec)}${secs.map(s => opt(s, s || 'Sin sección', S.regSec)).join('')}</select></div>
+      <div class="field"><label for="r-team">Equipo</label><select id="r-team">${opt('', 'Todos', S.regTeam)}${teams.map(r => opt(teamKey(r), (S.regSec ? '' : (r.s || 'Sin sección') + ' · ') + r.a, S.regTeam)).join('')}</select></div>
+      <div class="field"><label for="r-per">Periodo</label><select id="r-per">${PERIODS.map(p => opt(p[0], p[1], S.regPeriod)).join('')}</select></div>
     </div>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Fecha</th><th>Actividad</th><th class="num">Asisten</th><th class="num">Faltan</th><th>Quién falta</th><th>Llegan tarde</th><th>Sin marcar</th></tr></thead>
-      <tbody>${rows.map(r => `<tr>
-        <td style="white-space:nowrap">${esc(shortDate(r.d))}</td>
-        <td>${esc(r.a)}${r.g ? `<br><span class="note small">${esc(r.g)}</span>` : ''}</td>
-        <td class="num">${r.n - r.f.length - r.s.length}/${r.n}</td>
-        <td class="num">${r.f.length}</td>
-        <td>${r.f.length ? esc(r.f.join(', ')) : '—'}</td>
-        <td>${r.t.length ? esc(r.t.join(', ')) : '—'}</td>
-        <td>${r.s.length ? esc(r.s.join(', ')) : '—'}</td></tr>`).join('')}</tbody>
-    </table></div>
-    ${absences}
+    ${S.regTeam ? regTeam(rows) : regOverview(rows)}
     <div class="btnrow">
-      <button type="button" class="btn" data-act="r-copy">Copiar para Excel</button>
-      ${S.confirmClear ? '<button type="button" class="btn danger" data-act="r-clear-yes">Sí, vaciar el registro</button><button type="button" class="btn ghost" data-act="r-clear-no">Cancelar</button>'
+      <button type="button" class="btn" data-act="r-copy">Copiar sesiones para Excel</button>
+      ${S.regTeam ? '<button type="button" class="btn" data-act="r-copy-p">Copiar asistencia por jugador</button>' : ''}
+      ${S.confirmClear ? '<button type="button" class="btn danger" data-act="r-clear-yes">Sí, vaciar todo el registro</button><button type="button" class="btn ghost" data-act="r-clear-no">Cancelar</button>'
         : '<button type="button" class="btn ghost danger" data-act="r-clear">Vaciar registro</button>'}
     </div>
-    <p class="note small">Pasa el registro al sitio que el centro tenga previsto (por ejemplo, el Excel de paraescolares) y vacíalo aquí cuando ya no lo necesites.</p>` : ''}`;
+    <p class="note small">«Copiar» respeta los filtros: si eliges Baloncesto, solo se copia lo de baloncesto. Pega la tabla en el Excel que tenga previsto el club y, al acabar la temporada, vacía el registro.</p>` : ''}`;
 }
-function addReports(){
-  const ta = $('#r-in');
-  const found = parseReports(ta ? ta.value : '');
-  if (!found.length) { toast('No encuentro ningún resumen. Copia los mensajes enteros, con su línea «Para el registro».'); return; }
-  let added = 0, updated = 0;
-  found.forEach(r => {
-    const i = register.findIndex(x => x.i === r.i && x.d === r.d && x.a === r.a);
-    if (i >= 0) { register[i] = r; updated++; } else { register.push(r); added++; }
+
+async function readChatFile(file){
+  const buf = new Uint8Array(await file.arrayBuffer());
+  // iPhone exporta el chat en un .zip con un _chat.txt dentro.
+  return buf[0] === 0x50 && buf[1] === 0x4b ? unzipTexts(buf) : new TextDecoder().decode(buf);
+}
+async function unzipTexts(buf){
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('zip');
+  const count = dv.getUint16(eocd + 10, true), dec = new TextDecoder();
+  let p = dv.getUint32(eocd + 16, true);
+  const out = [];
+  for (let k = 0; k < count && p + 46 <= buf.length && dv.getUint32(p, true) === 0x02014b50; k++) {
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), off = dv.getUint32(p + 42, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nlen));
+    p += 46 + nlen + xlen + clen;
+    if (!/\.txt$/i.test(name) || dv.getUint32(off, true) !== 0x04034b50) continue;
+    const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    const data = buf.subarray(start, start + size);
+    if (method === 0) out.push(dec.decode(data));
+    else if (method === 8) {
+      if (typeof DecompressionStream !== 'function') throw new Error('deflate');
+      const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      out.push(await new Response(stream).text());
+    }
+  }
+  if (!out.length) throw new Error('zip');
+  return out.join('\n');
+}
+async function loadChatFile(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  try { addReports(await readChatFile(f)); }
+  catch (e) {
+    toast(e && e.message === 'deflate' ? 'Este navegador no abre .zip: descomprímelo y carga el .txt de dentro.' : 'No he podido leer ese archivo. Carga el .txt o el .zip que da WhatsApp al exportar el chat.');
+  }
+  input.value = '';
+}
+
+function addReports(text){
+  const r = parseReports(text);
+  const warn = r.broken ? ' · ' + r.broken + ' sin la línea #PL2 (no se pueden leer)' : '';
+  if (!r.found.length) {
+    toast(r.broken ? 'Hay ' + r.broken + ' resúmenes sin su última línea (#PL2…): no se pueden leer.' : 'No encuentro ningún resumen. Copia los mensajes enteros, con su última línea #PL2.');
+    return;
+  }
+  let added = 0, changed = 0, same = 0;
+  r.found.forEach(x => {
+    const i = register.findIndex(y => y.i === x.i && y.d === x.d);
+    if (i < 0) { register.push(x); added++; }
+    else if (JSON.stringify(register[i]) === JSON.stringify(x)) same++;
+    else { register[i] = x; changed++; }
   });
-  store.set('pl.register', register);
+  store.set('pl.reg2', register);
   S.regText = '';
   render();
-  toast((added === 1 ? '1 sesión añadida' : added + ' sesiones añadidas') + (updated ? ' · ' + updated + (updated === 1 ? ' actualizada' : ' actualizadas') : ''));
+  const parts = [(added === 1 ? '1 sesión nueva' : added + ' sesiones nuevas')];
+  if (changed) parts.push(changed + (changed === 1 ? ' corregida' : ' corregidas'));
+  if (same) parts.push(same + ' ya estaban');
+  toast(parts.join(' · ') + warn);
+}
+
+function toTSV(head, rows){
+  const cell = v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+  return [head].concat(rows).map(a => a.map(cell).join('\t')).join('\n');
 }
 function registerTSV(){
-  const rows = regRows().sort((x, y) => x.d.localeCompare(y.d) || x.a.localeCompare(y.a, 'es'));
-  const head = ['Fecha', 'Actividad', 'Grupo', 'Monitor/a', 'Total', 'Asisten', 'Faltan', 'Llegan tarde', 'Sin marcar', 'Quién falta', 'Quién llega tarde', 'Quién está sin marcar'];
-  const cell = v => String(v).replace(/[\t\r\n]+/g, ' ');
-  return [head].concat(rows.map(r => [numDate(r.d), r.a, r.g, r.m, r.n, r.n - r.f.length - r.s.length, r.f.length, r.t.length, r.s.length,
-    r.f.join(', '), r.t.join(', '), r.s.join(', ')])).map(a => a.map(cell).join('\t')).join('\n');
+  const rows = regRows().sort((x, y) => x.d.localeCompare(y.d) || bySecTeam(x, y));
+  return toTSV(['Fecha', 'Sección', 'Equipo', 'Entrenador/a', 'Total', 'Asisten', 'Llegan tarde', 'Faltan', 'Sin marcar', 'Quién llega tarde', 'Quién falta', 'Quién está sin marcar'],
+    rows.map(r => { const g = namesBy(r); return [numDate(r.d), r.s, r.a, r.m, r.total, came(r), g.T.length, g.F.length, g.U.length, g.T.join(', '), g.F.join(', '), g.U.join(', ')]; }));
+}
+function playersTSV(){
+  const rows = regRows(), r0 = rows[0] || {};
+  return toTSV(['Sección', 'Equipo', 'Jugador', 'Sesiones', 'Vino', 'Llegó tarde', 'Faltó', 'Sin marcar', '% asistencia'],
+    playersOf(rows).map(p => [r0.s, r0.a, p.n, p.A + p.T + p.F + p.U, p.A + p.T, p.T, p.F, p.U, p.pct == null ? '' : p.pct]));
 }
 
 function coordSettings(){
+  if (!S.secDraft) S.secDraft = cfg.secs.map(x => Object.assign({}, x));
   return `
     <h2>Ajustes</h2>
-    <p class="note">Se guardan en este ordenador y viajan dentro de cada lista que envías.</p>
-    <div class="field"><label for="s-org">Nombre del centro</label><input id="s-org" maxlength="60" value="${esc(cfg.org)}" placeholder="Colegio…"><span class="hint">Sale en la cabecera de la app del monitor.</span></div>
-    <div class="field"><label for="s-phone">Tu WhatsApp de coordinación</label><input id="s-phone" inputmode="tel" maxlength="20" value="${esc(cfg.phone)}" placeholder="600 000 000"><span class="hint">Aquí llegarán los resúmenes. Mejor un móvil del centro que uno personal.</span></div>
-    <div class="field"><label for="s-url">Enlace de la app</label><input id="s-url" inputmode="url" maxlength="300" value="${esc(cfg.url)}" placeholder="https://…"><span class="hint">La dirección donde has subido la app. Con ella, cada mensaje lleva un enlace que abre la lista del monitor con un toque.</span></div>
+    <p class="note">Se guardan en este dispositivo y viajan dentro de cada lista que envías.</p>
+    <div class="field"><label for="s-org">Nombre del club o centro</label><input id="s-org" maxlength="60" value="${esc(cfg.org)}" placeholder="Club…"><span class="hint">Sale en la cabecera de la app del entrenador.</span></div>
+    <div class="field"><label for="s-url">Enlace de la app</label><input id="s-url" inputmode="url" maxlength="300" value="${esc(cfg.url)}" placeholder="https://…"><span class="hint">La dirección de esta página. Con ella, cada mensaje lleva un enlace que abre la lista con un toque.</span></div>
+    <section class="panel" aria-labelledby="secs-h">
+      <h3 id="secs-h">Secciones: adónde va la asistencia</h3>
+      <p class="note">Crea en WhatsApp un grupo de asistencia por sección, solo con su coordinador, sus entrenadores y tú, y escribe aquí su nombre. Así cada coordinador recibe solo lo de su sección. Si una sección prefiere un chat privado, deja el grupo vacío y pon el número.</p>
+      <div class="secs">${S.secDraft.map((x, i) => `
+        <div class="secrow">
+          <div class="field"><label for="sec-n-${i}">Sección</label><input id="sec-n-${i}" data-sec="${i}" data-f="n" maxlength="30" value="${esc(x.n)}"></div>
+          <div class="field"><label for="sec-w-${i}">Grupo de WhatsApp</label><input id="sec-w-${i}" data-sec="${i}" data-f="w" maxlength="60" value="${esc(x.w)}" placeholder="${esc('Asistencia ' + (x.n || ''))}"></div>
+          <div class="field"><label for="sec-t-${i}">O número</label><input id="sec-t-${i}" data-sec="${i}" data-f="t" inputmode="tel" maxlength="20" value="${esc(x.t)}" placeholder="600 000 000"></div>
+          <button type="button" class="btn sm ghost danger" data-act="sec-del" data-i="${i}">Quitar</button>
+        </div>`).join('')}
+      </div>
+      <div class="btnrow"><button type="button" class="btn sm" data-act="sec-add">Añadir sección</button></div>
+    </section>
     <div class="btnrow"><button type="button" class="btn primary" data-act="s-save">Guardar ajustes</button></div>
-    <p class="note small">Si cambias el número o el nombre del centro, reenvía las listas para que les lleguen a los monitores.</p>`;
+    <p class="note small">Si cambias un grupo, un número o el nombre del club, reenvía las listas a los entrenadores para que les llegue el cambio.</p>`;
 }
 function saveSettings(){
   const org = clean(($('#s-org') || {}).value, LIM.text);
-  const rawPhone = (($('#s-phone') || {}).value || '').trim();
-  const ph = phone(rawPhone);
   const url = clean(($('#s-url') || {}).value, 300).replace(/[#?].*$/, '');
-  if (rawPhone && !ph) { toast('Ese número no parece válido: escribe 9 cifras o ponle el prefijo del país.'); return; }
   if (url && !/^https:\/\/\S+$/i.test(url)) { toast('El enlace tiene que empezar por https://'); return; }
-  Object.assign(cfg, { org, phone: ph, url });
+  const secs = [];
+  for (const x of S.secDraft || cfg.secs) {
+    const n = cleanSec(x.n), w = clean(x.w, LIM.text), raw = String(x.t || '').trim(), t = phone(raw);
+    if (!n) { if (w || raw) { toast('Hay una sección sin nombre'); return; } continue; }
+    if (raw && !t) { toast('El número de «' + n + '» no parece válido: escribe 9 cifras o ponle el prefijo del país.'); return; }
+    if (secs.some(s => s.n === n)) { toast('La sección «' + n + '» está repetida'); return; }
+    secs.push({ n, w, t });
+  }
+  if (!secs.length) { toast('Deja al menos una sección'); return; }
+  Object.assign(cfg, { org, url, secs });
   store.set('pl.cfg', cfg);
+  S.secDraft = null;
   render();
   toast('Ajustes guardados');
 }
@@ -945,16 +1361,21 @@ function saveSettings(){
 function coordClick(act, b){
   const d = S.draft;
   switch (act) {
-    case 'tab': S.tab = b.dataset.t; S.confirmClear = false; S.confirmDel = null; render(); window.scrollTo(0, 0); break;
+    case 'tab': S.tab = b.dataset.t; S.confirmClear = false; S.confirmDel = null; S.secDraft = null; render(); window.scrollTo(0, 0); break;
     case 'c-convert': syncDraft(); convertDraft(); break;
     case 'c-reset': S.draft = newDraft(); S.msg = null; render(); break;
     case 'c-drop': syncDraft(); d.people.splice(+b.dataset.i, 1); S.msg = null; render(); break;
     case 'c-generate': syncDraft(); generate(); break;
-    case 'c-share': { const g = groups.find(x => x.id === S.msg); if (g) shareText(monitorMessage(g)); break; }
-    case 'c-copy': { const g = groups.find(x => x.id === S.msg); if (g) copyWithToast(monitorMessage(g), 'Mensaje copiado'); break; }
+    case 'c-share': case 'c-copy': {
+      const g = groups.find(x => x.id === S.msg), text = g && monitorMessage(g);
+      if (!text) { toast('Un momento: se está preparando el mensaje'); break; }
+      if (act === 'c-share') shareText(text); else copyWithToast(text, 'Mensaje copiado');
+      break;
+    }
+    case 'k-copy': { const g = groups.find(x => x.id === S.msg); if (g) copyWithToast(showKey(g.key), 'Clave copiada'); break; }
     case 'g-msg': case 'g-edit': {
       const g = groups.find(x => x.id === b.dataset.id); if (!g) break;
-      S.draft = { id: g.id, a: g.a, g: g.g, m: g.m, fmt: 'auto', raw: '', people: g.n.map(l => ({ label: l, src: '' })) };
+      S.draft = { id: g.id, s: g.s, a: g.a, g: g.g, m: g.m, fmt: 'auto', raw: '', people: g.n.map(l => ({ label: l, src: '' })) };
       S.msg = act === 'g-msg' ? g.id : null; S.tab = 'crear';
       render();
       const t = $(act === 'g-msg' ? '#msg-panel' : '#pv-h'); if (t) t.scrollIntoView({ block: 'start' });
@@ -967,12 +1388,25 @@ function coordClick(act, b){
       if (d && d.id === b.dataset.id) { S.draft = newDraft(); S.msg = null; }
       S.confirmDel = null; render(); toast('Lista borrada de este ordenador');
       break;
-    case 'r-add': addReports(); break;
-    case 'r-sample': S.regText = sampleText(); render(); toast('Ejemplo pegado: pulsa «Añadir al registro»'); break;
+    case 'r-add': addReports(($('#r-in') || {}).value || ''); break;
+    case 'r-sample': S.regText = sampleText(); render(); toast('Ejemplo pegado: pulsa «Añadir lo pegado»'); break;
+    case 'r-team': {
+      const r = register.find(x => teamKey(x) === b.dataset.k);
+      if (r) { S.regSec = r.s || ''; S.regTeam = b.dataset.k; }
+      render();
+      const h = $('#r-team'); if (h) h.scrollIntoView({ block: 'start' });
+      break;
+    }
     case 'r-copy': copyWithToast(registerTSV(), 'Tabla copiada: pégala en Excel'); break;
+    case 'r-copy-p': copyWithToast(playersTSV(), 'Tabla copiada: pégala en Excel'); break;
     case 'r-clear': S.confirmClear = true; render(); break;
     case 'r-clear-no': S.confirmClear = false; render(); break;
-    case 'r-clear-yes': register = []; store.set('pl.register', register); S.confirmClear = false; S.regFilter = ''; render(); toast('Registro vaciado'); break;
+    case 'r-clear-yes':
+      register = []; store.set('pl.reg2', register); store.del('pl.register');
+      Object.assign(S, { confirmClear: false, regSec: '', regTeam: '' }); render(); toast('Registro vaciado');
+      break;
+    case 'sec-add': S.secDraft.push({ n: '', w: '', t: '' }); render(); { const i = $('#sec-n-' + (S.secDraft.length - 1)); if (i) i.focus(); } break;
+    case 'sec-del': S.secDraft.splice(+b.dataset.i, 1); render(); break;
     case 's-save': saveSettings(); break;
   }
 }
@@ -980,6 +1414,8 @@ function coordInput(e){
   const t = e.target;
   if (S.mode !== 'coord') return;
   if (t.id === 'r-in') { S.regText = t.value; return; }
+  if (t.dataset.sec != null) { const x = S.secDraft && S.secDraft[+t.dataset.sec]; if (x) x[t.dataset.f] = t.value; return; }
+  if (t.id === 's-org' || t.id === 's-url') return;
   if (!S.draft) return;
   if (t.dataset.d) S.draft[t.dataset.d] = t.value;
   else if (t.dataset.lbl != null) { const p = S.draft.people[+t.dataset.lbl]; if (p) p.label = t.value; }
@@ -1019,6 +1455,7 @@ document.addEventListener('click', e => {
       if (!l) break;
       lists = lists.filter(x => x.id !== l.id); delete sessions[l.id];
       store.set('pl.lists', lists); store.set('pl.sessions', sessions);
+      { const keys = store.get('pl.keys', {}) || {}; if (keys[l.id]) { delete keys[l.id]; store.set('pl.keys', keys); } }
       Object.assign(S, { listId: null, confirmRemove: false }); go(); toast('Lista quitada de este móvil');
       break;
     case 'send':
@@ -1028,7 +1465,10 @@ document.addEventListener('click', e => {
     case 'cancel-send': S.sending = false; render(); break;
     case 'sent': markSent(true); break;
     case 'share-sum': if (l) shareText(summary(l, S.date, sess(l.id, S.date)).text).then(ok => { if (ok) markSent(true); }); break;
-    case 'copy-sum': if (l) { copyWithToast(summary(l, S.date, sess(l.id, S.date)).text, 'Resumen copiado: pégalo en el chat de coordinación'); markSent(false); } break;
+    case 'copy-sum':
+      if (l) { copyWithToast(summary(l, S.date, sess(l.id, S.date)).text, 'Resumen copiado: pégalo en ' + (l.w ? 'el grupo «' + l.w + '»' : 'el chat de coordinación')); markSent(false); }
+      break;
+    case 'unlock-cancel': Object.assign(S, { lock: null, keyError: '', keyText: '' }); clearHash(); render(); break;
     default: coordClick(act, b);
   }
 });
@@ -1037,30 +1477,44 @@ document.addEventListener('change', e => {
   if (t.id === 'date-in') {
     if (/^\d{4}-\d{2}-\d{2}$/.test(t.value) && t.value <= today()) { S.date = t.value; S.sending = false; render(); }
     else t.value = S.date;
-  } else if (t.id === 'r-filter') { S.regFilter = t.value; render(); }
-  else if (t.dataset && t.dataset.d && S.draft) S.draft[t.dataset.d] = t.value;
+  }
+  else if (t.id === 'r-sec') { S.regSec = t.value; S.regTeam = ''; render(); }
+  else if (t.id === 'r-team') { S.regTeam = t.value; render(); }
+  else if (t.id === 'r-per') { S.regPeriod = t.value; render(); }
+  else if (t.id === 'r-file') loadChatFile(t);
+  else if (t.dataset && t.dataset.d && S.draft) {
+    S.draft[t.dataset.d] = t.value;
+    if (t.dataset.d === 's') { syncDraft(); S.lastSec = t.value; render(); }
+  }
 });
 document.addEventListener('input', coordInput);
 
-purgeOld();
-let bootMsg = '';
-if (incoming) {
-  const r = parseListCode(incoming);
-  if (r.list) {
-    const i = lists.findIndex(x => x.id === r.list.id);
-    if (i >= 0) lists[i] = r.list; else lists.push(r.list);
-    store.set('pl.lists', lists);
-    Object.assign(S, { mode: 'monitor', listId: r.list.id, date: today() });
-    store.set('pl.mode', 'monitor');
-    bootMsg = (i >= 0 ? 'Lista actualizada: ' : 'Lista guardada en este móvil: ') + r.list.a;
-  } else {
-    Object.assign(S, { mode: 'monitor', listId: null, addError: r.error });
-  }
-  // Quita la lista de la barra de direcciones: si el monitor guarda la app, se guarda sin datos.
-  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+// La clave va en un formulario: así también la abre la tecla «Ir» del teclado del móvil.
+document.addEventListener('submit', e => {
+  if (e.target && e.target.id === 'key-form') { e.preventDefault(); unlock(); }
+});
+
+// Llega con el enlace de su lista (al abrir la app o con la app ya abierta). Si la lista tiene clave
+// y este móvil no la conoce, se la pide; el código se queda en la barra de direcciones hasta que se abra.
+function importFromHash(){
+  let text = '';
+  try { text = /PL[123]\./.test(location.hash) ? decodeURIComponent(location.hash) : ''; } catch (e) {}
+  if (!text) return false;
+  Object.assign(S, { mode: 'monitor', listId: null, opening: true, lock: null, sending: false, confirmRemove: false });
+  render();
+  importList(text).then(r => {
+    S.opening = false;
+    if (r.list) { saveImported(r.list); return; }
+    if (r.needKey) Object.assign(S, { lock: { text }, keyError: '', keyText: '' });
+    else { S.addError = r.error; clearHash(); }
+    render(); focusKey();
+  });
+  return true;
 }
-render();
-if (bootMsg) toast(bootMsg);
+window.addEventListener('hashchange', importFromHash);
+
+purgeOld();
+if (!importFromHash()) render();
 })();
 </script>
 </body>
